@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: Cuter Animals & Better Climbing</title>
+    <title>Wild Explorers: Lush Greens & Natural Sun</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -452,10 +452,11 @@ const _idealCamPos = new THREE.Vector3();
 const _rayDirCam   = new THREE.Vector3();
 const _testPos     = new THREE.Vector3();
 
+// Restored natural day sky blue (no artificial dark blue tint)
 const _skyColor   = new THREE.Color();
 const _fogColor   = new THREE.Color();
 const _sunsetSky  = new THREE.Color(0xfd5e53);
-const _daySky     = new THREE.Color(0x76B6E0); 
+const _daySky     = new THREE.Color(0x87CEEB); 
 const _sunsetFog  = new THREE.Color(0xffb347);
 const _nightSky   = new THREE.Color(0x020014);
 const _nightFog   = new THREE.Color(0x05051a);
@@ -643,9 +644,9 @@ function updateGraphics(){
     if(!renderer || !globalDirLight) return;
     
     const maxTex = renderer.capabilities.maxTextureSize;
-    // CineonToneMapping offers a highly saturated, contrasting look that cures the "washed out" appearance.
-    renderer.toneMapping = THREE.CineonToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    // Using ACESFilmic Tone mapping for a balanced, rich, natural sunlight appearance
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.95;
     
     if(graphicsQuality === 'low'){
         chunkRenderDistance = 1;
@@ -677,7 +678,6 @@ function updateGraphics(){
         let sRes = isMobile ? 2048 : 4096;
         globalDirLight.shadow.mapSize.width = Math.min(sRes, maxTex);
         globalDirLight.shadow.mapSize.height = Math.min(sRes, maxTex);
-        renderer.toneMappingExposure = 1.1; 
     }
     
     if(globalDirLight.shadow.map) {
@@ -706,9 +706,14 @@ function getVisualElevationAt(x,z){
     return (y00*(1-tx)+y10*tx)*(1-tz)+(y01*(1-tx)+y11*tx)*tz;
 }
 
+// Updated mapping to favor much more grassy/plains and rainforests, and reduce desert/beach.
 function getBiome(y, moisture) {
-    if(y < 2) return 'beach'; if(y > 70) return 'snow'; if(y > 45) return 'stone';
-    if(moisture > 0.60) return 'rainforest'; if(moisture < 0.35) return 'desert'; return 'plains';
+    if(y < 1.5) return 'beach'; // Reduced height of sand (was 2.0)
+    if(y > 75) return 'snow';
+    if(y > 50) return 'stone';
+    if(moisture > 0.55) return 'rainforest'; // Increased frequency of deep forests
+    if(moisture < 0.20) return 'desert'; // Vastly reduced the amount of desert wasteland
+    return 'plains'; // Expanded green plains
 }
 
 function hostGame(){
@@ -830,9 +835,11 @@ function init(seed){
     renderer.outputEncoding = THREE.sRGBEncoding; renderer.setSize(window.innerWidth,window.innerHeight); renderer.shadowMap.enabled=true; 
     document.body.appendChild(renderer.domElement);
     
-    // Deeper ambient blue tint to remove washed out look completely
-    globalHemiLight=new THREE.HemisphereLight(0x87CEEB, 0x444444, 0.35); scene.add(globalHemiLight);
-    globalDirLight=new THREE.DirectionalLight(0xffffee, 1.2); globalDirLight.castShadow=true;
+    // Restored Natural white/grey ambient lighting to remove artificial blue tint
+    globalHemiLight=new THREE.HemisphereLight(0xffffff, 0x444444, 0.5); scene.add(globalHemiLight);
+    
+    // Restored bright, natural pure directional sunlight
+    globalDirLight=new THREE.DirectionalLight(0xffffff, 1.1); globalDirLight.castShadow=true;
     globalDirLight.shadow.camera.left=-200; globalDirLight.shadow.camera.right=200;
     globalDirLight.shadow.camera.top=200; globalDirLight.shadow.camera.bottom=-200;
     globalDirLight.shadow.bias=-0.001; scene.add(globalDirLight);
@@ -873,7 +880,7 @@ function updateAstronomicalClock(dt, localWeather = 0){
     globalDirLight.position.y=Math.max(0,sunHeight*500);
     globalDirLight.position.z=playerBody.position.z+Math.cos(sunAngle)*200;
     
-    if(sunHeight>0.3){ _skyColor.copy(_daySky); _fogColor.copy(_daySky); globalDirLight.intensity=1.2; stars.material.opacity-=dt; }
+    if(sunHeight>0.3){ _skyColor.copy(_daySky); _fogColor.copy(_daySky); globalDirLight.intensity=1.1; stars.material.opacity-=dt; }
     else if(sunHeight>-0.1){ const t=(sunHeight+0.1)/0.4; _skyColor.lerpColors(_sunsetSky,_daySky,t); _fogColor.lerpColors(_sunsetFog,_daySky,t); globalDirLight.intensity=Math.max(0,sunHeight*2.5); stars.material.opacity+=dt*0.5; }
     else { _skyColor.copy(_nightSky); _fogColor.copy(_nightFog); globalDirLight.intensity=0; stars.material.opacity+=dt; }
     stars.material.opacity=Math.max(0,Math.min(0.8,stars.material.opacity));
@@ -914,9 +921,6 @@ function createJuicyEnvironment(){
     globalWaterMesh.position.y=-2; globalWaterMesh.receiveShadow = true; scene.add(globalWaterMesh);
 }
 
-// -------------------------------------------------------------
-// NEW: Completely Cuter, Softer Procedural Animals
-// -------------------------------------------------------------
 function buildProceduralAnimal(type, stats) {
     const group = new THREE.Group(), tiltWrapper = new THREE.Group(); group.add(tiltWrapper);
     const bodyWrapper = new THREE.Group(); tiltWrapper.add(bodyWrapper);
@@ -927,63 +931,50 @@ function buildProceduralAnimal(type, stats) {
 
     let animData = {legs: [], type: p.bipedal ? 'biped' : 'quad', head: null, tail: null};
 
-    // Torso (Soft Sphere/Ellipsoid)
+    // Torso
     const torso = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 24), mat);
     torso.scale.set(p.torsoW, p.torsoW * 0.9, p.torsoL);
     torso.position.y = p.legL + p.torsoW * 0.8;
     torso.castShadow = true; torso.receiveShadow = true;
     bodyWrapper.add(torso);
 
-    // Head Group
+    // Head
     const headGroup = new THREE.Group();
     headGroup.position.set(0, p.legL + p.torsoW * 1.2 + p.neckL, p.torsoL * 0.8);
     bodyWrapper.add(headGroup);
     animData.head = headGroup;
 
-    // Head Base
     const headRad = p.torsoW * 0.85;
     const head = new THREE.Mesh(new THREE.SphereGeometry(headRad, 24, 24), mat);
     head.castShadow = true; head.receiveShadow = true;
     headGroup.add(head);
 
-    // Cute Snout
     const snout = new THREE.Mesh(new THREE.SphereGeometry(headRad * 0.5, 16, 16), mat);
-    snout.scale.set(1, 0.7, 1.2);
-    snout.position.set(0, -headRad * 0.2, headRad * 0.8);
+    snout.scale.set(1, 0.7, 1.2); snout.position.set(0, -headRad * 0.2, headRad * 0.8);
     headGroup.add(snout);
 
-    // Nose
     const nose = new THREE.Mesh(new THREE.SphereGeometry(headRad * 0.15, 8, 8), darkMat);
-    nose.position.set(0, headRad * 0.1, headRad * 0.5);
-    snout.add(nose);
+    nose.position.set(0, headRad * 0.1, headRad * 0.5); snout.add(nose);
 
-    // Big Cute Eyes with Catchlights
     const eyeRad = headRad * 0.18;
     const createEye = (x) => {
-        const eyeGroup = new THREE.Group();
-        eyeGroup.position.set(x, headRad * 0.2, headRad * 0.75);
+        const eyeGroup = new THREE.Group(); eyeGroup.position.set(x, headRad * 0.2, headRad * 0.75);
         const eye = new THREE.Mesh(new THREE.SphereGeometry(eyeRad, 16, 16), darkMat);
         const highlight = new THREE.Mesh(new THREE.SphereGeometry(eyeRad * 0.3, 8, 8), whiteMat);
         highlight.position.set(eyeRad * 0.3, eyeRad * 0.3, eyeRad * 0.7);
-        eyeGroup.add(eye); eyeGroup.add(highlight);
-        return eyeGroup;
+        eyeGroup.add(eye); eyeGroup.add(highlight); return eyeGroup;
     };
-    headGroup.add(createEye(-headRad * 0.4));
-    headGroup.add(createEye(headRad * 0.4));
+    headGroup.add(createEye(-headRad * 0.4)); headGroup.add(createEye(headRad * 0.4));
 
-    // Custom Ears based on species
     if (type === 'cat') {
-        const earGeo = new THREE.ConeGeometry(headRad*0.3, headRad*0.6, 8);
-        earGeo.translate(0, headRad*0.3, 0);
+        const earGeo = new THREE.ConeGeometry(headRad*0.3, headRad*0.6, 8); earGeo.translate(0, headRad*0.3, 0);
         const earL = new THREE.Mesh(earGeo, mat); earL.position.set(-headRad*0.5, headRad*0.5, 0); earL.rotation.z = Math.PI/6;
         const earR = new THREE.Mesh(earGeo, mat); earR.position.set(headRad*0.5, headRad*0.5, 0); earR.rotation.z = -Math.PI/6;
         headGroup.add(earL, earR);
     } else if (type === 'dog') {
         const earGeo = new THREE.SphereGeometry(1, 12, 12);
-        const earL = new THREE.Mesh(earGeo, mat); earL.scale.set(headRad*0.2, headRad*0.7, headRad*0.4);
-        earL.position.set(-headRad*0.8, headRad*0.2, -headRad*0.2); earL.rotation.z = Math.PI/8;
-        const earR = new THREE.Mesh(earGeo, mat); earR.scale.set(headRad*0.2, headRad*0.7, headRad*0.4);
-        earR.position.set(headRad*0.8, headRad*0.2, -headRad*0.2); earR.rotation.z = -Math.PI/8;
+        const earL = new THREE.Mesh(earGeo, mat); earL.scale.set(headRad*0.2, headRad*0.7, headRad*0.4); earL.position.set(-headRad*0.8, headRad*0.2, -headRad*0.2); earL.rotation.z = Math.PI/8;
+        const earR = new THREE.Mesh(earGeo, mat); earR.scale.set(headRad*0.2, headRad*0.7, headRad*0.4); earR.position.set(headRad*0.8, headRad*0.2, -headRad*0.2); earR.rotation.z = -Math.PI/8;
         headGroup.add(earL, earR);
     } else if (type === 'monkey') {
         const earGeo = new THREE.SphereGeometry(headRad*0.3, 12, 12);
@@ -997,62 +988,32 @@ function buildProceduralAnimal(type, stats) {
         headGroup.add(earL, earR);
     }
 
-    // Tails
-    const tailGroup = new THREE.Group();
-    tailGroup.position.set(0, p.legL + p.torsoW, -p.torsoL * 0.8);
-    bodyWrapper.add(tailGroup);
-    animData.tail = tailGroup;
-    
-    if (type === 'squirrel') { // Big bushy tail
-        const tail = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), mat);
-        tail.scale.set(p.torsoW * 0.8, p.tailL * 1.2, p.torsoW * 0.8);
-        tail.position.set(0, p.tailL * 0.5, -p.torsoW * 0.5);
-        tailGroup.add(tail);
-        tailGroup.rotation.x = Math.PI / 4;
-    } else { // Normal tail
-        const tailGeo = new THREE.CylinderGeometry(p.torsoW*0.15, p.torsoW*0.05, p.tailL, 8);
-        tailGeo.translate(0, -p.tailL/2, 0);
-        const tail = new THREE.Mesh(tailGeo, mat);
-        if (type==='monkey') tail.rotation.x = Math.PI/2;
-        else tail.rotation.x = -Math.PI/4;
+    const tailGroup = new THREE.Group(); tailGroup.position.set(0, p.legL + p.torsoW, -p.torsoL * 0.8); bodyWrapper.add(tailGroup); animData.tail = tailGroup;
+    if (type === 'squirrel') { 
+        const tail = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 16), mat); tail.scale.set(p.torsoW * 0.8, p.tailL * 1.2, p.torsoW * 0.8); tail.position.set(0, p.tailL * 0.5, -p.torsoW * 0.5); tailGroup.add(tail); tailGroup.rotation.x = Math.PI / 4;
+    } else { 
+        const tailGeo = new THREE.CylinderGeometry(p.torsoW*0.15, p.torsoW*0.05, p.tailL, 8); tailGeo.translate(0, -p.tailL/2, 0); const tail = new THREE.Mesh(tailGeo, mat);
+        if (type==='monkey') tail.rotation.x = Math.PI/2; else tail.rotation.x = -Math.PI/4;
         tailGroup.add(tail);
     }
 
-    // Legs with soft paws
     const createLeg = (x, z) => {
-        const piv = new THREE.Group();
-        piv.position.set(x, p.legL, z);
-        const legGeo = new THREE.CylinderGeometry(p.torsoW*0.25, p.torsoW*0.2, p.legL, 12);
-        legGeo.translate(0, -p.legL/2, 0);
-        const lm = new THREE.Mesh(legGeo, mat);
-        lm.castShadow = true;
-        
-        const paw = new THREE.Mesh(new THREE.SphereGeometry(p.torsoW*0.25, 12, 12), mat);
-        paw.scale.set(1, 0.6, 1.2);
-        paw.position.set(0, -p.legL, p.torsoW*0.1);
-        lm.add(paw);
-
-        piv.add(lm); bodyWrapper.add(piv);
-        return piv;
+        const piv = new THREE.Group(); piv.position.set(x, p.legL, z);
+        const legGeo = new THREE.CylinderGeometry(p.torsoW*0.25, p.torsoW*0.2, p.legL, 12); legGeo.translate(0, -p.legL/2, 0); const lm = new THREE.Mesh(legGeo, mat); lm.castShadow = true;
+        const paw = new THREE.Mesh(new THREE.SphereGeometry(p.torsoW*0.25, 12, 12), mat); paw.scale.set(1, 0.6, 1.2); paw.position.set(0, -p.legL, p.torsoW*0.1); lm.add(paw);
+        piv.add(lm); bodyWrapper.add(piv); return piv;
     };
 
     if (p.bipedal) {
         animData.legs.push(createLeg(-p.torsoW*0.5, 0), createLeg(p.torsoW*0.5, 0));
-        // Arms for bipedal
         const createArm = (x, z) => {
-            const piv = new THREE.Group();
-            piv.position.set(x, p.legL + p.torsoW*1.5, z);
-            const armGeo = new THREE.CylinderGeometry(p.torsoW*0.2, p.torsoW*0.15, p.legL*1.2, 12);
-            armGeo.translate(0, -p.legL*0.6, 0);
-            const am = new THREE.Mesh(armGeo, mat); am.castShadow = true;
-            piv.add(am); bodyWrapper.add(piv); return piv;
+            const piv = new THREE.Group(); piv.position.set(x, p.legL + p.torsoW*1.5, z);
+            const armGeo = new THREE.CylinderGeometry(p.torsoW*0.2, p.torsoW*0.15, p.legL*1.2, 12); armGeo.translate(0, -p.legL*0.6, 0);
+            const am = new THREE.Mesh(armGeo, mat); am.castShadow = true; piv.add(am); bodyWrapper.add(piv); return piv;
         };
         animData.legs.push(createArm(-p.torsoW*0.9, p.torsoL*0.5), createArm(p.torsoW*0.9, p.torsoL*0.5));
     } else {
-        animData.legs.push(
-            createLeg(-p.torsoW*0.6, p.torsoL*0.6), createLeg(p.torsoW*0.6, p.torsoL*0.6),
-            createLeg(-p.torsoW*0.6, -p.torsoL*0.5), createLeg(p.torsoW*0.6, -p.torsoL*0.5)
-        );
+        animData.legs.push(createLeg(-p.torsoW*0.6, p.torsoL*0.6), createLeg(p.torsoW*0.6, p.torsoL*0.6), createLeg(-p.torsoW*0.6, -p.torsoL*0.5), createLeg(p.torsoW*0.6, -p.torsoL*0.5));
     }
 
     return {group, tiltWrapper, bodyWrapper, animData};
@@ -1123,13 +1084,15 @@ function generateTerrainChunk(chunkX,chunkZ){
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
         
         const c=new THREE.Color();
+        // Upgraded Color Palette for lush, natural scenery
         if(d<-0.5) c.setHex(0x3b2f2f); 
-        else if(biome === 'beach') c.setHex(0xd2b48c);
+        else if(biome === 'beach') c.setHex(0xeaddcf); // Brighter natural sand
         else if(biome === 'snow') c.setHex(0xdbe9f4); 
-        else if(biome === 'stone') c.setHex(0x666666);
-        else if(biome === 'rainforest') c.setHex(0x1e3b1c);
-        else if(biome === 'desert') c.setHex(0xe3c16f);
-        else c.setHex(0x4a7c59); 
+        else if(biome === 'stone') c.setHex(0x777777);
+        else if(biome === 'rainforest') c.setHex(0x228b22); // Vibrant forest green
+        else if(biome === 'desert') c.setHex(0xedc9af);
+        else c.setHex(0x55a630); // Bright, vivid grassy plains
+        
         colors.push(c.r,c.g,c.b);
     }
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3)); geometry.computeVertexNormals();
@@ -1178,7 +1141,16 @@ function updateChunkGeometry(id){
         const biome = getBiome(y, moisture);
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
         const c=new THREE.Color();
-        if(d<-0.5) c.setHex(0x3b2f2f); else if(biome === 'beach') c.setHex(0xd2b48c); else if(biome === 'snow') c.setHex(0xdbe9f4); else if(biome === 'stone') c.setHex(0x666666); else if(biome === 'rainforest') c.setHex(0x1e3b1c); else if(biome === 'desert') c.setHex(0xe3c16f); else c.setHex(0x4a7c59); 
+        
+        // Upgraded Color Palette for chunk updates too
+        if(d<-0.5) c.setHex(0x3b2f2f); 
+        else if(biome === 'beach') c.setHex(0xeaddcf); 
+        else if(biome === 'snow') c.setHex(0xdbe9f4); 
+        else if(biome === 'stone') c.setHex(0x777777); 
+        else if(biome === 'rainforest') c.setHex(0x228b22); 
+        else if(biome === 'desert') c.setHex(0xedc9af); 
+        else c.setHex(0x55a630); 
+        
         colors[ci]=c.r; colors[ci+1]=c.g; colors[ci+2]=c.b; ci+=3;
     }
     geom.attributes.position.needsUpdate=true; geom.attributes.color.needsUpdate=true; geom.computeVertexNormals();
@@ -1293,14 +1265,13 @@ function handlePhysicsAndAnimation(dt){
     const cgy=getVisualElevationAt(playerBody.position.x,playerBody.position.z);
     if(pb<cgy){ playerBody.position.y=cgy+playerStats.physicsRadius; if(playerBody.velocity.y<0) playerBody.velocity.y=0; }
     
-    // --- STICKY CLIMBING LOGIC (MOBILE FRIENDLY) ---
     isCurrentlyClimbing = false;
     if(jumpCooldownTimer <= 0 && playerStats.climbSpeed > 0) {
         let closestTree = null; let minDistSq = 999999; 
         
         for(let t of treeBodies) {
             let dx = playerBody.position.x - t.x; let dz = playerBody.position.z - t.z; let distSq = dx*dx + dz*dz;
-            let threshold = t.radius + playerStats.physicsRadius + 1.5; // Widened detection range
+            let threshold = t.radius + playerStats.physicsRadius + 1.5;
             if(distSq < (threshold * threshold) && distSq < minDistSq) { minDistSq = distSq; closestTree = t; }
         }
         
@@ -1315,7 +1286,6 @@ function handlePhysicsAndAnimation(dt){
             if (heightUpTree > playerStats.physicsRadius + 0.4) {
                 isCurrentlyClimbing = true;
                 
-                // Sticky magnetic effect to prevent sliding off sideways on mobile
                 if(distToTree > closestTree.radius + playerStats.physicsRadius * 0.4) {
                     playerBody.velocity.x += toTree.x * 30 * dt;
                     playerBody.velocity.z += toTree.z * 30 * dt;
@@ -1328,10 +1298,9 @@ function handlePhysicsAndAnimation(dt){
 
                 if (isMoving) {
                     let dot = toTree.dot(_moveDir);
-                    // Very forgiving angle for mobile joystick (-0.2 means slightly sideways still counts as up)
                     if (dot > -0.2 && heightUpTree < maxAllowedHeight) {
                         playerBody.velocity.y = playerStats.climbSpeed; 
-                    } else if (dot < -0.5) { // deliberately pulling away downwards
+                    } else if (dot < -0.5) { 
                         playerBody.velocity.y = -playerStats.climbSpeed * 0.7; 
                     } else {
                         playerBody.velocity.y = 0; 
@@ -1369,7 +1338,6 @@ function handlePhysicsAndAnimation(dt){
     }
     else { legs.forEach(l=>{l.rotation.x+=(0-l.rotation.x)*10*dt;}); playerGroup.bodyWrapper.position.y+=(0-playerGroup.bodyWrapper.position.y)*10*dt; }
     
-    // Add cute breathing/idle animations to head and tail
     if (playerGroup.animData.head) {
         playerGroup.animData.head.rotation.y = isMoving ? Math.sin(time*10)*0.1 : Math.sin(time*2)*0.05;
         playerGroup.animData.head.rotation.x = isMoving ? Math.sin(time*20)*0.05 : Math.sin(time*1.5)*0.05;
