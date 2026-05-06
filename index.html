@@ -249,7 +249,7 @@ const _skyColor = new THREE.Color(), _fogColor = new THREE.Color(), _sunsetSky =
 let scene, camera, renderer, world, simplex;
 let playerGroup, playerBody, playerStats;
 let terrainChunks = {}; 
-let chunkQueue = []; // Optimized async generation queue
+let chunkQueue = []; 
 let gameActive = false, isGameOver = false; 
 let clock = new THREE.Clock();
 let globalWaterMesh, globalDirLight, globalHemiLight, stars;
@@ -302,7 +302,6 @@ let audioCtx, audioEnabled = true, masterMusicGain, masterSfxGain;
 let musicTimer = null, musicLooping = false;
 const musicScales = [ [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25], [146.83, 164.81, 174.61, 220.00, 246.94, 293.66, 329.63, 349.23, 440.00, 493.88, 587.33] ];
 
-// RESTORED: Emoji properties for the class badge
 const AnimalTraits = {
     dog:     { mass:25,  speed:14, jump:12, maxHealth:150, emoji:'🐕', label:'DOG', climbSpeed:0, maxClimbProp:0, props:{ torsoL:1.1, torsoW:0.55, legL:0.6, neckL:0.5, snoutL:0.3, tailL:0.6, bipedal:false, color:0x8B4513 } },
     cat:     { mass:5,   speed:12, jump:16, maxHealth:80,  emoji:'🐈', label:'CAT', climbSpeed:8, maxClimbProp:0.6, props:{ torsoL:1.0, torsoW:0.4, legL:0.4, neckL:0.4, snoutL:0.15, tailL:0.9, bipedal:false, color:0xFF8C00 } },
@@ -444,7 +443,6 @@ function updateGraphics(){
         renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
         globalDirLight.shadow.mapSize.width = 2048; globalDirLight.shadow.mapSize.height = 2048; 
     } else if(graphicsQuality === 'extreme'){ 
-        // RESTORED: Ultra Setting
         chunkRenderDistance = 2; 
         if(scene) scene.fog.density = 0.0008; 
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0)); 
@@ -605,20 +603,18 @@ function openMenu(){
     document.getElementById('start-btn').innerHTML='▶ Resume Game'; 
 }
 
-// RESTORED & OPTIMIZED: Start Game Flow to fix the Black Screen & Lag
+// --- ENGINE PRE-WARM FIX ---
+// This runs behind the loading screen to snap the camera directly behind the player
+// and compile all shaders before the game is visible to the user.
 function startGame(mode) {
     updateFOV(); initAudio(); 
     document.getElementById('main-menu').style.display = 'none';
-    
-    // Show loading screen immediately to hide the freeze
     document.getElementById('loading-screen').style.display = 'flex';
     
-    // Yield to browser so the loading screen actually renders before freezing
     setTimeout(() => {
         let selectedClass = document.getElementById('animal-select').value;
         const t = AnimalTraits[selectedClass]; 
         
-        // Update badge
         document.getElementById('class-badge').innerText = t.emoji + ' ' + t.label; 
         document.getElementById('btn-special').innerText = selectedClass === 'dog' ? 'DIG' : (selectedClass === 'monkey' ? 'LEAP' : 'DASH');
 
@@ -634,11 +630,16 @@ function startGame(mode) {
             }
         }
         
-        // Force a render frame while loading screen is still up to compile shaders
+        // Fast-forward physics and camera positioning in the background
+        for(let i = 0; i < 10; i++) {
+            world.step(1/60, 1/60, 3);
+            handlePhysicsAndAnimation(0.016);
+        }
+
+        // Force WebGL to compile shaders with the correct camera position
         requestAnimationFrame(() => {
             renderer.render(scene, camera);
             
-            // Give WebGL 500ms to settle, then fade into the game
             setTimeout(() => {
                 document.getElementById('loading-screen').style.display = 'none';
                 document.getElementById('game-ui').style.display = 'block'; 
@@ -649,7 +650,6 @@ function startGame(mode) {
                 isGameOver = false; 
                 playAmbient();
                 
-                // If this is the very first time, start the loop
                 if (!clock.running) {
                     clock.start();
                     animate();
@@ -704,8 +704,14 @@ function init(seed){
     initAmbientLife(); 
     spawnLogCabin(); 
 
-    // Synchronously generate the chunk we are standing on so we don't fall through the world
+    // Synchronously generate the base chunk and force the queue to finish surrounding chunks instantly
     generateTerrainChunk(0, 0);
+    updateChunks();
+    while (chunkQueue.length > 0) {
+        let nextChunk = chunkQueue.shift();
+        let parts = nextChunk.split(',');
+        generateTerrainChunk(Number(parts[0]), Number(parts[1]));
+    }
 
     window.addEventListener('resize',()=>{ 
         camera.aspect=window.innerWidth/window.innerHeight; 
@@ -833,7 +839,6 @@ function spawnLogCabin() {
     world.addBody(cBody);
 }
 
-// --- NEW CRAFTING SYSTEM ---
 function checkBuildAvail() {
     document.getElementById('btn-build-camp').classList.toggle('disabled', inventory.wood < 10 || inventory.stone < 5);
     document.getElementById('btn-build-fence').classList.toggle('disabled', inventory.wood < 4);
@@ -922,7 +927,6 @@ function spawnBuildingVisuals(type, px, py, pz, rotY) {
     }
 }
 
-// --- SLEEP & RESPOND SYSTEM ---
 function sleepInBed() {
     if(currentHealth >= maxHealth && lives >= 3 && !realTimeMode && fastForwardTime > 6 && fastForwardTime < 18) return; 
     let overlay = document.getElementById('freeze-flash'); 
@@ -965,7 +969,6 @@ function respawnPlayer() {
     document.getElementById('freeze-flash').style.opacity = '0';
 }
 
-// --- AMBIENT WILDLIFE & PREDATOR AI ---
 function initAmbientLife() {
     const birdGeo = new THREE.ConeGeometry(0.4, 0.8, 3); birdGeo.rotateX(Math.PI/2); const birdMat = new THREE.MeshBasicMaterial({color: 0x222222});
     for(let i=0; i<30; i++) { 
@@ -1014,7 +1017,6 @@ function buildNPCMesh(type) {
 function spawnLandNPC(biome, tx, tz) {
     if(landNPCs.length > 50) { let old = landNPCs.shift(); scene.remove(old.group); }
     
-    // Safety check: Don't spawn close to player or cabin
     if (Math.hypot(tx - playerBody.position.x, tz - playerBody.position.z) < 60) return;
     if (Math.hypot(tx - cabinLocation.x, tz - cabinLocation.z) < 60) return;
 
@@ -1252,7 +1254,7 @@ function updateChunkGeometry(id){
     for(let i=0;i<pos.length;i+=3){
         const x=(cx*chunkSize)+pos[i], z=(cz*chunkSize)+pos[i+2], y=getFinalElevationAt(x,z); pos[i+1]=y; 
         const moisture = (simplex.noise2D(x * 0.002 + 500, z * 0.002 + 500) + 1) / 2; const biome = getBiome(y, moisture); 
-        let d=digMap.get(Math.round(x)+','+Math.round(z))||0; 
+        let d=digMap.get(Math.round(x)+Math.round(z))||0; 
         const c=new THREE.Color();
         if(d<-0.5) c.setHex(0x3b2f2f); else if(biome === 'beach') c.setHex(0xffdf80); else if(biome === 'snow') c.setHex(0xffffff); else if(biome === 'stone') c.setHex(0x888888); else if(biome === 'rainforest') c.setHex(0x0fa821); else if(biome === 'desert') c.setHex(0xf5b756); else c.setHex(0x42e329); 
         colors[ci]=c.r; colors[ci+1]=c.g; colors[ci+2]=c.b; ci+=3;
@@ -1472,7 +1474,6 @@ function handlePhysicsAndAnimation(dt){
     let hd=smoothedCamDistance; const sd=smoothedCamDistance/15; 
     for(let i=1;i<=15;i++){ _testPos.addScaledVector(_rayDirCam,sd); if(_testPos.y<getVisualElevationAt(_testPos.x,_testPos.z)+0.5){hd=(i-1)*sd;break;} } 
     
-    // RESTORED FIX: Prevent Camera clipping inside the player which caused black screen angles
     if(hd<finalCamDistance) finalCamDistance=hd; else finalCamDistance+=(hd-finalCamDistance)*10*dt; 
     finalCamDistance = Math.max(2.5, finalCamDistance); 
     
@@ -1627,7 +1628,6 @@ function updateWeather(dt){
     }
 }
 
-// RESTORED FIX: Asynchronous Queueing for Chunk loading to stop the stuttering lag
 function updateChunks(){ 
     if(!playerBody) return; 
     const px=Math.round(playerBody.position.x/chunkSize); const pz=Math.round(playerBody.position.z/chunkSize); 
@@ -1641,7 +1641,6 @@ function updateChunks(){
         } 
     } 
     
-    // Process exactly 1 chunk per frame to keep FPS high
     if (chunkQueue.length > 0) {
         let nextChunk = chunkQueue.shift();
         let parts = nextChunk.split(',');
