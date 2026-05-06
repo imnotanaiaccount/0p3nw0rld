@@ -487,6 +487,7 @@ let graphicsQuality = 'med';
 let treeBodies = [];
 let treeMeshesGroup;
 let isCurrentlyClimbing = false;
+let jumpCooldownTimer = 0; // Ensures jumping off trees works smoothly without instantly re-snapping to the trunk
 
 // Scalable Base Geometries & Materials for Performance
 const geoTrunk = new THREE.CylinderGeometry(1, 1, 1, 8); geoTrunk.translate(0, 0.5, 0); 
@@ -1167,7 +1168,6 @@ function setupInputUX(){
 function playerJump(){
     const gy=getVisualElevationAt(playerBody.position.x,playerBody.position.z);
     
-    // Check if player is standing on a Cannon physics object (like a branch)
     const rayStart = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
     const rayEnd = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - playerStats.physicsRadius - 0.5, playerBody.position.z);
     const rayResult = new CANNON.RaycastResult();
@@ -1180,10 +1180,14 @@ function playerJump(){
         playerBody.velocity.y = playerStats.jump; 
         
         if(isCurrentlyClimbing) {
-            playerBody.velocity.x += _moveDir.x * 8;
-            playerBody.velocity.z += _moveDir.z * 8;
+            // Camera-Directed ejection from the tree trunk
+            let launchDir = _camForward.clone().normalize();
+            playerBody.velocity.x += launchDir.x * 15;
+            playerBody.velocity.z += launchDir.z * 15;
         }
 
+        jumpCooldownTimer = 0.25; // Prevents instantly re-snapping to the trunk we just jumped off
+        
         playerGroup.group.scale.set(1.1,0.85,1.1); 
         setTimeout(()=>playerGroup.group.scale.set(1,1,1),120); 
         playSFX('jump');
@@ -1225,6 +1229,9 @@ function playerSpecial(){
 
 function handlePhysicsAndAnimation(dt){
     if(!playerBody) return;
+    
+    if(jumpCooldownTimer > 0) jumpCooldownTimer -= dt;
+
     let ix=0,iz=0;
     if(joystickPointerId!==null){ix=moveVector.x;iz=moveVector.y;}
     else{if(keys.d)ix=1;else if(keys.a)ix=-1;if(keys.s)iz=1;else if(keys.w)iz=-1;}
@@ -1247,7 +1254,7 @@ function handlePhysicsAndAnimation(dt){
     if(pb<cgy){ playerBody.position.y=cgy+playerStats.physicsRadius; if(playerBody.velocity.y<0) playerBody.velocity.y=0; }
     
     isCurrentlyClimbing = false;
-    if(playerStats.climbSpeed > 0 && isMoving) {
+    if(jumpCooldownTimer <= 0 && playerStats.climbSpeed > 0) {
         let closestTree = null;
         let minDist = 999; 
         for(let t of treeBodies) {
@@ -1261,12 +1268,40 @@ function handlePhysicsAndAnimation(dt){
         }
         
         if(closestTree) {
-            let toTree = new THREE.Vector3(closestTree.x - playerBody.position.x, 0, closestTree.z - playerBody.position.z).normalize();
-            if(toTree.dot(_moveDir) > 0.4) {
-                let heightUpTree = playerBody.position.y - closestTree.visualBase;
-                let maxAllowedHeight = closestTree.h * playerStats.maxClimbProp;
+            let heightUpTree = playerBody.position.y - closestTree.visualBase;
+            let maxAllowedHeight = closestTree.h * playerStats.maxClimbProp;
+            
+            // Check if we are visibly off the ground
+            if (heightUpTree > playerStats.physicsRadius + 0.4) {
+                isCurrentlyClimbing = true;
                 
-                if(heightUpTree < maxAllowedHeight) {
+                // Inject an exact counter-force against gravity for the next physics step to maintain altitude
+                playerBody.applyForce(new CANNON.Vec3(0, playerStats.mass * 15, 0), playerBody.position);
+                
+                // Kill residual downward momentum to create a solid hanging snap
+                if (playerBody.velocity.y < 0) {
+                    playerBody.velocity.y *= 0.5; 
+                    if (Math.abs(playerBody.velocity.y) < 1) playerBody.velocity.y = 0;
+                }
+
+                if (isMoving) {
+                    let toTree = new THREE.Vector3(closestTree.x - playerBody.position.x, 0, closestTree.z - playerBody.position.z).normalize();
+                    let dot = toTree.dot(_moveDir);
+                    
+                    if (dot > 0.4 && heightUpTree < maxAllowedHeight) {
+                        playerBody.velocity.y = playerStats.climbSpeed; // Pushing up
+                    } else if (dot < -0.4) {
+                        playerBody.velocity.y = -playerStats.climbSpeed * 0.7; // Climbing down
+                    } else {
+                        playerBody.velocity.y = 0; // Shimmy sideways (holds altitude perfectly)
+                    }
+                } else {
+                    playerBody.velocity.y = 0; // Hang totally still when no keys are pressed
+                }
+            } else if (isMoving) {
+                // Not hanging yet, but pushing forward into the trunk to initiate the climb
+                let toTree = new THREE.Vector3(closestTree.x - playerBody.position.x, 0, closestTree.z - playerBody.position.z).normalize();
+                if(toTree.dot(_moveDir) > 0.4 && heightUpTree < maxAllowedHeight) {
                     playerBody.velocity.y = playerStats.climbSpeed;
                     isCurrentlyClimbing = true;
                 }
