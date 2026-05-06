@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: Biomes & Canopy Jumping</title>
+    <title>Wild Explorers: Mobile Optimized</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -384,6 +384,7 @@
                 <option value="low">Low</option>
                 <option value="med" selected>Medium</option>
                 <option value="high">High</option>
+                <option value="extreme">Ultra (Extreme)</option>
             </select>
         </div>
         
@@ -433,6 +434,9 @@
 <div id="btn-special" class="action-btn">DIG</div>
 
 <script>
+// Hardware Detection for Safe Scaling
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
 const _upVec       = new THREE.Vector3(0,1,0);
 const _hitNorm     = new THREE.Vector3();
 const _yawQuat     = new THREE.Quaternion();
@@ -487,7 +491,7 @@ let graphicsQuality = 'med';
 let treeBodies = [];
 let treeMeshesGroup;
 let isCurrentlyClimbing = false;
-let jumpCooldownTimer = 0; // Ensures jumping off trees works smoothly without instantly re-snapping to the trunk
+let jumpCooldownTimer = 0; 
 
 // Scalable Base Geometries & Materials for Performance
 const geoTrunk = new THREE.CylinderGeometry(1, 1, 1, 8); geoTrunk.translate(0, 0.5, 0); 
@@ -639,29 +643,51 @@ function playSFX(type){
 function updateGraphics(){
     graphicsQuality = document.getElementById('graphics-select').value;
     if(!renderer || !globalDirLight) return;
+    
+    // Hardware-aware limit caps to prevent mobile VRAM crashes
+    const maxTex = renderer.capabilities.maxTextureSize;
+    
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    
     if(graphicsQuality === 'low'){
-        renderer.setPixelRatio(1);
+        renderer.setPixelRatio(isMobile ? 0.75 : 1.0); // Extreme CPU/GPU save on mobile
         renderer.shadowMap.type = THREE.BasicShadowMap;
         globalDirLight.shadow.mapSize.width = 512;
         globalDirLight.shadow.mapSize.height = 512;
     } else if(graphicsQuality === 'med'){
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.setPixelRatio(isMobile ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
         renderer.shadowMap.type = THREE.PCFShadowMap;
         globalDirLight.shadow.mapSize.width = 1024;
         globalDirLight.shadow.mapSize.height = 1024;
-    } else {
-        renderer.setPixelRatio(window.devicePixelRatio);
+    } else if(graphicsQuality === 'high'){
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        globalDirLight.shadow.mapSize.width = 2048;
-        globalDirLight.shadow.mapSize.height = 2048;
+        let sRes = isMobile ? 1024 : 2048;
+        globalDirLight.shadow.mapSize.width = Math.min(sRes, maxTex);
+        globalDirLight.shadow.mapSize.height = Math.min(sRes, maxTex);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+    } else if(graphicsQuality === 'extreme'){
+        // Secretly cap mobile at 1.5x pixel ratio and 2K shadows to prevent guaranteed context crash
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0));
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        let sRes = isMobile ? 2048 : 4096;
+        globalDirLight.shadow.mapSize.width = Math.min(sRes, maxTex);
+        globalDirLight.shadow.mapSize.height = Math.min(sRes, maxTex);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.25; 
     }
     
     if(globalDirLight.shadow.map) {
         globalDirLight.shadow.map.dispose();
         globalDirLight.shadow.map = null;
     }
+    
     scene.traverse(function(child) {
-        if(child.material) child.material.needsUpdate = true;
+        if(child.material) {
+            child.material.needsUpdate = true;
+        }
     });
 }
 
@@ -849,17 +875,18 @@ function init(seed){
     simplex=new SimplexNoise(seed);
     scene=new THREE.Scene(); scene.background=_skyColor; scene.fog=new THREE.FogExp2(_fogColor,0.0025);
     camera=new THREE.PerspectiveCamera(baseFOV,window.innerWidth/window.innerHeight,0.1,1500);
-    renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'default'});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+    renderer.outputEncoding = THREE.sRGBEncoding; // Required for brilliant colors in High/Ultra
     renderer.setSize(window.innerWidth,window.innerHeight);
-    renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.BasicShadowMap;
+    renderer.shadowMap.enabled=true; 
     document.body.appendChild(renderer.domElement);
+    
     globalHemiLight=new THREE.HemisphereLight(0xffffff,0x444444,0.8); scene.add(globalHemiLight);
     globalDirLight=new THREE.DirectionalLight(0xffffee,1.0); globalDirLight.castShadow=true;
-    globalDirLight.shadow.mapSize.width=1024; globalDirLight.shadow.mapSize.height=1024;
     globalDirLight.shadow.camera.left=-200; globalDirLight.shadow.camera.right=200;
     globalDirLight.shadow.camera.top=200; globalDirLight.shadow.camera.bottom=-200;
     globalDirLight.shadow.bias=-0.001; scene.add(globalDirLight);
+    
     world=new CANNON.World(); world.gravity.set(0,-15,0);
     world.broadphase=new CANNON.NaiveBroadphase(); world.solver.iterations=10;
     
@@ -873,6 +900,7 @@ function init(seed){
     const border=new THREE.Mesh(new THREE.TorusGeometry(7.5,0.2,8,32),new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:0.8}));
     border.rotation.x=Math.PI/2; targetReticle.add(border);
     scene.add(targetReticle); targetReticle.visible=false;
+    
     createJuicyEnvironment(); initWeatherSystem(); createPlayer(playerClass); setupInputUX();
     window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); updateGraphics(); });
     
@@ -904,7 +932,6 @@ function updateAstronomicalClock(dt, localWeather = 0){
     else { _skyColor.copy(_nightSky); _fogColor.copy(_nightFog); globalDirLight.intensity=0; stars.material.opacity+=dt; }
     stars.material.opacity=Math.max(0,Math.min(0.8,stars.material.opacity));
     
-    // Dim the sky based on local biome precipitation, not global settings
     if(localWeather > 0 && sunHeight > 0){ 
         _skyColor.lerp(_rainSky,0.6); 
         globalDirLight.intensity*=0.4; 
@@ -913,13 +940,17 @@ function updateAstronomicalClock(dt, localWeather = 0){
 }
 
 function initWeatherSystem(){
-    const sv=[]; for(let i=0;i<2000;i++) sv.push((Math.random()-0.5)*2000,Math.random()*1000+100,(Math.random()-0.5)*2000);
+    const maxStars = isMobile ? 800 : 2000;
+    const sv=[]; for(let i=0;i<maxStars;i++) sv.push((Math.random()-0.5)*2000,Math.random()*1000+100,(Math.random()-0.5)*2000);
     const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sv,3));
     stars=new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:2,transparent:true,opacity:0})); scene.add(stars);
+    
     const rainGeo=new THREE.BoxGeometry(0.05,0.8,0.05), rainMat=new THREE.MeshBasicMaterial({color:0x88bbff,transparent:true,opacity:0.6});
     const snowGeo=new THREE.BoxGeometry(0.2,0.2,0.2), snowMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.8});
     const splashGeo=new THREE.BoxGeometry(0.1,0.1,0.1), splashMat=new THREE.MeshBasicMaterial({color:0x88bbff,transparent:true,opacity:0.7});
-    for(let i=0;i<200;i++){
+    
+    const maxParticles = isMobile ? 80 : 200;
+    for(let i=0;i<maxParticles;i++){
         const drop=new THREE.Mesh(rainGeo,rainMat); drop.visible=false; drop.active=false; scene.add(drop); rainPool.push(drop);
         const flake=new THREE.Mesh(snowGeo,snowMat); flake.visible=false; flake.active=false; flake.rotationSpeed=new THREE.Vector3(Math.random(),Math.random(),Math.random()); scene.add(flake); snowPool.push(flake);
         const splash=new THREE.Mesh(splashGeo,splashMat); splash.visible=false; splash.active=false; splash.velocity=new THREE.Vector3(); splash.life=0; scene.add(splash); splashPool.push(splash);
@@ -927,9 +958,24 @@ function initWeatherSystem(){
 }
 
 function createJuicyEnvironment(){
-    const waterMat=new THREE.MeshStandardMaterial({color:0x0088ff,opacity:0.65,transparent:true,roughness:0.1,metalness:0.1});
-    globalWaterMesh=new THREE.Mesh(new THREE.PlaneGeometry(8000,8000,50,50).rotateX(-Math.PI/2),waterMat);
-    globalWaterMesh.position.y=-2; scene.add(globalWaterMesh);
+    // Less GPU strain on mobile but retains Physical property
+    const waterMat = new THREE.MeshPhysicalMaterial({
+        color: 0x0066ff,
+        transmission: isMobile ? 0.2 : 0.5,    
+        opacity: isMobile ? 0.8 : 1,           
+        metalness: 0.8,       
+        roughness: 0.1,       
+        ior: 1.4,             
+        thickness: 5.0,       
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+    
+    const wRes = isMobile ? 15 : 50; // Massively reduces vertices for mobile GPUs
+    globalWaterMesh=new THREE.Mesh(new THREE.PlaneGeometry(8000,8000,wRes,wRes).rotateX(-Math.PI/2),waterMat);
+    globalWaterMesh.position.y=-2; 
+    globalWaterMesh.receiveShadow = true;
+    scene.add(globalWaterMesh);
 }
 
 function buildProceduralAnimal(type,stats){
@@ -973,12 +1019,12 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
     let h = 0, radius = 0;
 
     if(biome === 'rainforest') {
-        h = 25 + rngVal * 25; // 25 to 50 height
-        radius = 1.5 + rngVal * 1.5; // 1.5 to 3 radius
+        h = 25 + rngVal * 25; 
+        radius = 1.5 + rngVal * 1.5; 
         
         let trunk = new THREE.Mesh(geoTrunk, matDarkWood);
         trunk.scale.set(radius*0.8, h, radius);
-        trunk.castShadow = true; treeGroup.add(trunk);
+        trunk.castShadow = true; trunk.receiveShadow = true; treeGroup.add(trunk);
         
         let shape = new CANNON.Cylinder(radius*0.8, radius, h, 8);
         let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
@@ -993,7 +1039,7 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
             let branch = new THREE.Mesh(geoBranch, matDarkWood);
             branch.scale.set(bl, radius*0.5, radius*0.5);
             branch.position.set(0, bh, 0); branch.rotation.y = -angle;
-            branch.castShadow = true; treeGroup.add(branch);
+            branch.castShadow = true; branch.receiveShadow = true; treeGroup.add(branch);
 
             let bx = Math.cos(angle) * (bl/2), bz = Math.sin(angle) * (bl/2);
             let bShape = new CANNON.Box(new CANNON.Vec3(bl/2, radius*0.25, radius*0.25));
@@ -1003,17 +1049,19 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
             let leaf = new THREE.Mesh(geoSphere, matDarkLeaves);
             leaf.scale.set(6, 4, 6);
             leaf.position.set(Math.cos(angle) * bl, bh, Math.sin(angle) * bl);
+            leaf.castShadow = true; leaf.receiveShadow = true;
             treeGroup.add(leaf);
         }
         
         let canopy = new THREE.Mesh(geoSphere, matDarkLeaves);
         canopy.scale.set(10 + rngVal*5, 6 + rngVal*3, 10 + rngVal*5);
-        canopy.position.y = h; treeGroup.add(canopy);
+        canopy.position.y = h; 
+        canopy.castShadow = true; canopy.receiveShadow = true; treeGroup.add(canopy);
     }
     else if(biome === 'snow') {
         h = 15 + rngVal * 15; radius = 0.8 + rngVal*0.4;
         let trunk = new THREE.Mesh(geoTrunk, matDarkWood);
-        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; trunk.receiveShadow = true; treeGroup.add(trunk);
         
         let shape = new CANNON.Cylinder(radius, radius, h, 8);
         let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
@@ -1021,12 +1069,12 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
         
         let leaves = new THREE.Mesh(geoCone, matPineLeaves);
         leaves.scale.set(5+rngVal*2, h*0.8, 5+rngVal*2);
-        leaves.position.y = h*0.2; leaves.castShadow = true; treeGroup.add(leaves);
+        leaves.position.y = h*0.2; leaves.castShadow = true; leaves.receiveShadow = true; treeGroup.add(leaves);
     }
     else if(biome === 'desert') {
         h = 4 + rngVal * 6; radius = 0.6 + rngVal*0.3;
         let trunk = new THREE.Mesh(geoTrunk, matCactus);
-        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; trunk.receiveShadow = true; treeGroup.add(trunk);
         
         let shape = new CANNON.Cylinder(radius, radius, h, 8);
         let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
@@ -1035,7 +1083,7 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
     else { 
         h = 10 + rngVal * 10; radius = 0.8 + rngVal*0.5;
         let trunk = new THREE.Mesh(geoTrunk, matWood);
-        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; trunk.receiveShadow = true; treeGroup.add(trunk);
         
         let shape = new CANNON.Cylinder(radius, radius, h, 8);
         let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
@@ -1043,7 +1091,7 @@ function spawnTree(tx, ty, tz, biome, rngVal) {
         
         let leaves = new THREE.Mesh(geoSphere, matLeaves);
         leaves.scale.set(5+rngVal*3, 4+rngVal*2, 5+rngVal*3);
-        leaves.position.y = h; leaves.castShadow = true; treeGroup.add(leaves);
+        leaves.position.y = h; leaves.castShadow = true; leaves.receiveShadow = true; treeGroup.add(leaves);
     }
 
     treeGroup.position.set(tx, ty, tz);
@@ -1081,7 +1129,9 @@ function generateTerrainChunk(chunkX,chunkZ){
     let chunkTrees = [];
     let rng = new SimplexNoise(chunkX * 123 + chunkZ * 456); 
     
-    for(let i=0; i<12; i++) { 
+    // Scale density based on device performance capability
+    const maxTrees = isMobile ? 7 : 12;
+    for(let i=0; i<maxTrees; i++) { 
         let tx = (chunkX * chunkSize) + (rng.noise2D(i, 0) * 0.5 + 0.5) * chunkSize - (chunkSize/2);
         let tz = (chunkZ * chunkSize) + (rng.noise2D(0, i) * 0.5 + 0.5) * chunkSize - (chunkSize/2);
         let ty = getFinalElevationAt(tx, tz);
@@ -1145,48 +1195,63 @@ function setupInputUX(){
     window.addEventListener('mousemove',(e)=>{ if(!mrd) return; targetCamYaw-=(e.clientX-lmx)*0.006; targetCamPitch-=(e.clientY-lmy)*0.006; targetCamPitch=Math.max(-Math.PI/2+0.1,Math.min(Math.PI/2-0.1,targetCamPitch)); lmx=e.clientX; lmy=e.clientY; });
     window.addEventListener('contextmenu',(e)=>e.preventDefault());
     const addRipple=(el)=>{ const r=document.createElement('div'); r.className='btn-ripple'; el.appendChild(r); setTimeout(()=>r.remove(),400); };
-    document.getElementById('btn-jump').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerJump(); addRipple(e.currentTarget); });
-    document.getElementById('btn-attack').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerAttack(); addRipple(e.currentTarget); });
-    document.getElementById('btn-special').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerSpecial(); addRipple(e.currentTarget); });
+    
+    // Throttled and Passive mapping for Touch
+    document.getElementById('btn-jump').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerJump(); addRipple(e.currentTarget); }, {passive:true});
+    document.getElementById('btn-attack').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerAttack(); addRipple(e.currentTarget); }, {passive:true});
+    document.getElementById('btn-special').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerSpecial(); addRipple(e.currentTarget); }, {passive:true});
+    
     const zone=document.getElementById('touch-zone-container'), joyBase=document.getElementById('joystick-base'), joyNub=document.getElementById('joystick-nub');
     zone.addEventListener('pointerdown',(e)=>{
         activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
         if(e.clientX<window.innerWidth/2&&joystickPointerId===null){ joystickPointerId=e.pointerId; joyBase.style.display='block'; joyBase.style.left=e.clientX+'px'; joyBase.style.top=e.clientY+'px'; joyNub.style.transform='translate(-50%,-50%) translate(0px,0px)'; moveVector.set(0,0); }
         else if(e.pointerId!==joystickPointerId){ cameraPointerId=e.pointerId; lastCamTouchX=e.clientX; lastCamTouchY=e.clientY; }
         if(activePointers.size>=2){ const pts=Array.from(activePointers.values()); initialPinchDistance=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y); initialPinchCamDistance=targetCamDistance; }
-    });
+    }, {passive:true});
+    
     zone.addEventListener('pointermove',(e)=>{
         if(activePointers.has(e.pointerId)){ activePointers.get(e.pointerId).x=e.clientX; activePointers.get(e.pointerId).y=e.clientY; }
         if(activePointers.size>=2){ const pts=Array.from(activePointers.values()), d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y); if(initialPinchDistance>0&&d>0.1){ targetCamDistance=Math.max(4,Math.min(40,initialPinchCamDistance*(initialPinchDistance/d))); } }
         else if(e.pointerId===joystickPointerId){ const rect=joyBase.getBoundingClientRect(), dx=e.clientX-(rect.left+rect.width/2), dy=e.clientY-(rect.top+rect.height/2), mD=50, dist=Math.sqrt(dx*dx+dy*dy), nx=dist>mD?dx*mD/dist:dx, ny=dist>mD?dy*mD/dist:dy; joyNub.style.transform=`translate(-50%,-50%) translate(${nx}px,${ny}px)`; moveVector.set(nx/mD,ny/mD); }
         else if(e.pointerId===cameraPointerId){ targetCamYaw-=(e.clientX-lastCamTouchX)*0.008; targetCamPitch-=(e.clientY-lastCamTouchY)*0.008; targetCamPitch=Math.max(-Math.PI/2+0.1,Math.min(Math.PI/2-0.1,targetCamPitch)); lastCamTouchX=e.clientX; lastCamTouchY=e.clientY; }
-    });
+    }, {passive:true});
+    
     const ep=(e)=>{ activePointers.delete(e.pointerId); if(e.pointerId===joystickPointerId){joystickPointerId=null;joyBase.style.display='none';moveVector.set(0,0);} else if(e.pointerId===cameraPointerId) cameraPointerId=null; if(activePointers.size<2) initialPinchDistance=null; };
-    zone.addEventListener('pointerup',ep); zone.addEventListener('pointercancel',ep); zone.addEventListener('pointerout',ep);
+    zone.addEventListener('pointerup',ep, {passive:true}); zone.addEventListener('pointercancel',ep, {passive:true}); zone.addEventListener('pointerout',ep, {passive:true});
 }
 
 function playerJump(){
     const gy=getVisualElevationAt(playerBody.position.x,playerBody.position.z);
     
-    const rayStart = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
-    const rayEnd = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - playerStats.physicsRadius - 0.5, playerBody.position.z);
-    const rayResult = new CANNON.RaycastResult();
-    world.raycastClosest(rayStart, rayEnd, { skipBackfaces: true }, rayResult);
+    // CPU Saving math calculation instead of Raycast where possible
+    let isOnPhysicsObject = false;
+    let minDistSq = 9999;
+    for(let t of treeBodies) {
+        let dx = playerBody.position.x - t.x;
+        let dz = playerBody.position.z - t.z;
+        let distSq = dx*dx + dz*dz;
+        let threshold = t.radius + playerStats.physicsRadius + 1.2;
+        if(distSq < (threshold * threshold)) {
+            let heightDiff = playerBody.position.y - t.visualBase;
+            if(heightDiff < t.h + 2.0 && heightDiff > -1.0) {
+                isOnPhysicsObject = true;
+                break;
+            }
+        }
+    }
     
     const isOnGround = (playerBody.position.y - gy < playerStats.physicsRadius + 1.0);
-    const isOnPhysicsObject = rayResult.hasHit;
 
     if(isOnGround || isOnPhysicsObject || isCurrentlyClimbing){ 
         playerBody.velocity.y = playerStats.jump; 
         
         if(isCurrentlyClimbing) {
-            // Camera-Directed ejection from the tree trunk
             let launchDir = _camForward.clone().normalize();
             playerBody.velocity.x += launchDir.x * 15;
             playerBody.velocity.z += launchDir.z * 15;
         }
 
-        jumpCooldownTimer = 0.25; // Prevents instantly re-snapping to the trunk we just jumped off
+        jumpCooldownTimer = 0.25; 
         
         playerGroup.group.scale.set(1.1,0.85,1.1); 
         setTimeout(()=>playerGroup.group.scale.set(1,1,1),120); 
@@ -1256,13 +1321,17 @@ function handlePhysicsAndAnimation(dt){
     isCurrentlyClimbing = false;
     if(jumpCooldownTimer <= 0 && playerStats.climbSpeed > 0) {
         let closestTree = null;
-        let minDist = 999; 
+        let minDistSq = 999999; 
+        
+        // Mobile Optimized distance check (avoids Math.sqrt)
         for(let t of treeBodies) {
             let dx = playerBody.position.x - t.x;
             let dz = playerBody.position.z - t.z;
-            let dist = Math.sqrt(dx*dx + dz*dz);
-            if(dist < t.radius + playerStats.physicsRadius + 0.8 && dist < minDist) {
-                minDist = dist;
+            let distSq = dx*dx + dz*dz;
+            let threshold = t.radius + playerStats.physicsRadius + 0.8;
+            
+            if(distSq < (threshold * threshold) && distSq < minDistSq) {
+                minDistSq = distSq;
                 closestTree = t;
             }
         }
@@ -1271,14 +1340,11 @@ function handlePhysicsAndAnimation(dt){
             let heightUpTree = playerBody.position.y - closestTree.visualBase;
             let maxAllowedHeight = closestTree.h * playerStats.maxClimbProp;
             
-            // Check if we are visibly off the ground
             if (heightUpTree > playerStats.physicsRadius + 0.4) {
                 isCurrentlyClimbing = true;
                 
-                // Inject an exact counter-force against gravity for the next physics step to maintain altitude
                 playerBody.applyForce(new CANNON.Vec3(0, playerStats.mass * 15, 0), playerBody.position);
                 
-                // Kill residual downward momentum to create a solid hanging snap
                 if (playerBody.velocity.y < 0) {
                     playerBody.velocity.y *= 0.5; 
                     if (Math.abs(playerBody.velocity.y) < 1) playerBody.velocity.y = 0;
@@ -1289,17 +1355,16 @@ function handlePhysicsAndAnimation(dt){
                     let dot = toTree.dot(_moveDir);
                     
                     if (dot > 0.4 && heightUpTree < maxAllowedHeight) {
-                        playerBody.velocity.y = playerStats.climbSpeed; // Pushing up
+                        playerBody.velocity.y = playerStats.climbSpeed; 
                     } else if (dot < -0.4) {
-                        playerBody.velocity.y = -playerStats.climbSpeed * 0.7; // Climbing down
+                        playerBody.velocity.y = -playerStats.climbSpeed * 0.7; 
                     } else {
-                        playerBody.velocity.y = 0; // Shimmy sideways (holds altitude perfectly)
+                        playerBody.velocity.y = 0; 
                     }
                 } else {
-                    playerBody.velocity.y = 0; // Hang totally still when no keys are pressed
+                    playerBody.velocity.y = 0; 
                 }
             } else if (isMoving) {
-                // Not hanging yet, but pushing forward into the trunk to initiate the climb
                 let toTree = new THREE.Vector3(closestTree.x - playerBody.position.x, 0, closestTree.z - playerBody.position.z).normalize();
                 if(toTree.dot(_moveDir) > 0.4 && heightUpTree < maxAllowedHeight) {
                     playerBody.velocity.y = playerStats.climbSpeed;
