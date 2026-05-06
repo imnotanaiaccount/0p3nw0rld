@@ -122,6 +122,12 @@
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
         #touch-zone-container { position: absolute; inset: 0; display: none; z-index: 5; pointer-events: auto; }
+        
+        /* THE ULTIMATE DESKTOP FIX: Nuke the touch shield on mouse devices so it can't steal clicks */
+        @media (hover: hover) and (pointer: fine) {
+            #touch-zone-container { display: none !important; }
+        }
+
         #joystick-base { position: absolute; width: 130px; height: 130px; background: radial-gradient(circle, rgba(100,180,255,0.15) 0%, rgba(255,255,255,0) 70%); border: 2px solid rgba(100,180,255,0.35); border-radius: 50%; display: none; pointer-events: none; transform: translate(-50%, -50%); }
         #joystick-nub { position: absolute; width: 54px; height: 54px; background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9) 0%, rgba(150,200,255,0.85) 100%); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%,-50%); box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
 
@@ -250,7 +256,7 @@ let scene, camera, renderer, world, simplex;
 let playerGroup, playerBody, playerStats;
 let terrainChunks = {}; 
 let chunkQueue = []; 
-let gameActive = false, isGameOver = false, isAnimating = false; // FIXED FLAG
+let gameActive = false, isGameOver = false, isAnimating = false; 
 let clock = new THREE.Clock();
 let globalWaterMesh, globalDirLight, globalHemiLight, stars;
 let peer, networkConnection; 
@@ -641,7 +647,6 @@ function startGame(mode) {
                 document.getElementById('touch-zone-container').style.display = 'block';
                 document.getElementById('resource-panel').style.display = 'flex';
                 
-                // THE VITAL FIX: Force boot the loop regardless of the internal clock state
                 gameActive = true; 
                 isGameOver = false; 
                 playAmbient();
@@ -855,7 +860,7 @@ function buildObject(type) {
     document.getElementById('res-stone').innerText = inventory.stone;
     checkBuildAvail();
     
-    let spawnDist = 4; // Spawn in front of player
+    let spawnDist = 4; 
     let px = playerBody.position.x + _camForward.x * spawnDist;
     let pz = playerBody.position.z + _camForward.z * spawnDist;
     let py = getFinalElevationAt(px, pz);
@@ -907,7 +912,6 @@ function spawnBuildingVisuals(type, px, py, pz, rotY) {
         fenceGroup.add(post1, post2, rail1, rail2);
         fenceGroup.position.set(px, py, pz); fenceGroup.rotation.y = rotY; scene.add(fenceGroup); popIn(fenceGroup);
         
-        // Physics
         let fBody = new CANNON.Body({mass: 0}); 
         let shape = new CANNON.Box(new CANNON.Vec3(1.75, 1.0, 0.15));
         let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(0,1,0), rotY);
@@ -942,7 +946,7 @@ function sleepInBed() {
 function triggerGameOver() {
     isGameOver = true; 
     document.getElementById('game-over-screen').style.display = 'flex';
-    document.getElementById('touch-zone-container').style.display = 'none'; // Lock controls
+    document.getElementById('touch-zone-container').style.display = 'none'; 
     keys.w = keys.a = keys.s = keys.d = false; 
     moveVector.set(0,0);
 }
@@ -1259,124 +1263,120 @@ function updateChunkGeometry(id){
     geom.attributes.position.needsUpdate=true; geom.attributes.color.needsUpdate=true; geom.computeVertexNormals();
 }
 
-// THE ROBUST UNIFIED INPUT SYSTEM
-function setupInputUX(){
-    window.addEventListener('click', () => window.focus()); // Ensure window has focus for keys
+// -------------------------------------------------------------
+// THE COMPLETELY REBUILT, BULLETPROOF INPUT SYSTEM
+// -------------------------------------------------------------
+function setupInputUX() {
     
-    window.addEventListener('keydown',(e)=>{ 
-        const k=e.key.toLowerCase(); 
-        if(k==='w') keys.w=true; if(k==='s') keys.s=true; if(k==='a') keys.a=true; if(k==='d') keys.d=true; 
-        if(k===' '){ e.preventDefault(); playerJump(); } 
-        if(k==='e') playerSpecial(); 
-        if(e.key==='ArrowLeft') targetCamYaw+=0.05; if(e.key==='ArrowRight') targetCamYaw-=0.05; 
-        if(e.key==='ArrowUp') targetCamPitch=Math.min(Math.PI/2-0.1,targetCamPitch+0.05); if(e.key==='ArrowDown') targetCamPitch=Math.max(-Math.PI/2+0.1,targetCamPitch-0.05); 
+    // 1. KEYBOARD (Attached to document for iframe embedding safety)
+    document.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if(k==='w') keys.w=true; if(k==='s') keys.s=true; if(k==='a') keys.a=true; if(k==='d') keys.d=true;
+        if(k===' '){ e.preventDefault(); playerJump(); }
+        if(k==='e') playerSpecial();
+        if(e.key==='ArrowLeft') targetCamYaw+=0.05; if(e.key==='ArrowRight') targetCamYaw-=0.05;
+        if(e.key==='ArrowUp') targetCamPitch=Math.min(Math.PI/2-0.1,targetCamPitch+0.05); if(e.key==='ArrowDown') targetCamPitch=Math.max(-Math.PI/2+0.1,targetCamPitch-0.05);
     });
-    window.addEventListener('keyup',(e)=>{ 
-        const k=e.key.toLowerCase(); 
-        if(k==='w') keys.w=false; if(k==='s') keys.s=false; if(k==='a') keys.a=false; if(k==='d') keys.d=false; 
+    
+    document.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        if(k==='w') keys.w=false; if(k==='s') keys.s=false; if(k==='a') keys.a=false; if(k==='d') keys.d=false;
     });
-    window.addEventListener('wheel',(e)=>{ targetCamDistance=Math.max(4,Math.min(40,targetCamDistance+Math.sign(e.deltaY)*2)); },{passive:true});
-    
-    window.addEventListener('contextmenu',(e)=>e.preventDefault());
-    
-    const addRipple=(el)=>{ const r=document.createElement('div'); r.className='btn-ripple'; el.appendChild(r); setTimeout(()=>r.remove(),400); };
-    document.getElementById('btn-jump').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerJump(); addRipple(e.currentTarget); }, {passive:true}); 
-    document.getElementById('btn-attack').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerAttack(); addRipple(e.currentTarget); }, {passive:true}); 
-    document.getElementById('btn-special').addEventListener('pointerdown',(e)=>{ e.stopPropagation(); playerSpecial(); addRipple(e.currentTarget); }, {passive:true});
-    
-    const zone=document.getElementById('touch-zone-container'), joyBase=document.getElementById('joystick-base'), joyNub=document.getElementById('joystick-nub');
-    
-    zone.addEventListener('pointerdown',(e)=>{ 
-        window.focus();
-        activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); 
-        
-        // Handle physical mouse immediately
-        if (e.pointerType === 'mouse') {
-            cameraPointerId = e.pointerId;
-            lastCamTouchX = e.clientX;
-            lastCamTouchY = e.clientY;
-            return;
-        }
 
-        // Handle touch inputs
-        if(e.clientX < window.innerWidth / 2 && joystickPointerId === null){ 
-            joystickPointerId = e.pointerId; 
-            joyBase.style.display = 'block'; 
-            joyBase.style.left = e.clientX + 'px'; 
-            joyBase.style.top = e.clientY + 'px'; 
-            joyNub.style.transform = `translate(-50%,-50%) translate(0px,0px)`; 
-            moveVector.set(0,0); 
-        } else if(e.pointerId !== joystickPointerId){ 
-            cameraPointerId = e.pointerId; 
-            lastCamTouchX = e.clientX; 
-            lastCamTouchY = e.clientY; 
-        } 
-        
-        if(activePointers.size >= 2){ 
-            const pts = Array.from(activePointers.values()); 
-            initialPinchDistance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y); 
-            initialPinchCamDistance = targetCamDistance; 
-        } 
+    // 2. DESKTOP MOUSE ROTATION
+    let isMouseDown = false;
+    document.addEventListener('mousedown', (e) => {
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT') return; // Don't intercept UI clicks
+        isMouseDown = true;
+        lastCamTouchX = e.clientX;
+        lastCamTouchY = e.clientY;
+    });
+    
+    document.addEventListener('mouseup', () => isMouseDown = false);
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!isMouseDown) return;
+        targetCamYaw -= (e.clientX - lastCamTouchX) * 0.006;
+        targetCamPitch -= (e.clientY - lastCamTouchY) * 0.006;
+        targetCamPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, targetCamPitch));
+        lastCamTouchX = e.clientX;
+        lastCamTouchY = e.clientY;
+    });
+    
+    document.addEventListener('wheel', (e) => {
+        targetCamDistance = Math.max(4, Math.min(40, targetCamDistance + Math.sign(e.deltaY)*2));
     }, {passive:true});
     
-    zone.addEventListener('pointermove',(e)=>{ 
-        if(activePointers.has(e.pointerId)){ 
-            activePointers.get(e.pointerId).x = e.clientX; 
-            activePointers.get(e.pointerId).y = e.clientY; 
-        } 
-        
-        // Physical mouse drag
-        if (e.pointerType === 'mouse') {
-            if (cameraPointerId === e.pointerId && e.buttons > 0) { // e.buttons > 0 confirms they are clicking & dragging
-                targetCamYaw -= (e.clientX - lastCamTouchX) * 0.008; 
-                targetCamPitch -= (e.clientY - lastCamTouchY) * 0.008; 
-                targetCamPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, targetCamPitch)); 
+    document.addEventListener('contextmenu', e => e.preventDefault());
+
+    // 3. MOBILE TOUCH CONTROLS
+    const zone = document.getElementById('touch-zone-container');
+    const joyBase = document.getElementById('joystick-base');
+    const joyNub = document.getElementById('joystick-nub');
+
+    if ('ontouchstart' in window) {
+        zone.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            for(let i=0; i<e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if(t.clientX < window.innerWidth / 2 && joystickPointerId === null) {
+                    joystickPointerId = t.identifier;
+                    joyBase.style.display = 'block';
+                    joyBase.style.left = t.clientX + 'px';
+                    joyBase.style.top = t.clientY + 'px';
+                    joyNub.style.transform = `translate(-50%,-50%) translate(0px,0px)`;
+                    moveVector.set(0,0);
+                } else if(cameraPointerId === null) {
+                    cameraPointerId = t.identifier;
+                    lastCamTouchX = t.clientX;
+                    lastCamTouchY = t.clientY;
+                }
             }
-            lastCamTouchX = e.clientX; 
-            lastCamTouchY = e.clientY; 
-            return;
-        }
+        }, {passive: false});
 
-        // Touch drag logic
-        if(activePointers.size >= 2 && !joystickPointerId){ 
-            const pts = Array.from(activePointers.values());
-            const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y); 
-            if(initialPinchDistance > 0 && d > 0.1){ 
-                targetCamDistance = Math.max(4, Math.min(40, initialPinchCamDistance * (initialPinchDistance / d))); 
-            } 
-        } else if(e.pointerId === joystickPointerId){ 
-            const rect = joyBase.getBoundingClientRect();
-            const dx = e.clientX - (rect.left + rect.width / 2);
-            const dy = e.clientY - (rect.top + rect.height / 2);
-            const mD = 50, dist = Math.sqrt(dx*dx + dy*dy);
-            const nx = dist > mD ? dx * mD / dist : dx;
-            const ny = dist > mD ? dy * mD / dist : dy; 
-            joyNub.style.transform = `translate(-50%,-50%) translate(${nx}px,${ny}px)`; 
-            moveVector.set(nx / mD, ny / mD); 
-        } else if(e.pointerId === cameraPointerId){ 
-            targetCamYaw -= (e.clientX - lastCamTouchX) * 0.008; 
-            targetCamPitch -= (e.clientY - lastCamTouchY) * 0.008; 
-            targetCamPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, targetCamPitch)); 
-            lastCamTouchX = e.clientX; 
-            lastCamTouchY = e.clientY; 
-        } 
-    }, {passive:true});
-    
-    const ep=(e)=>{ 
-        activePointers.delete(e.pointerId); 
-        if(e.pointerId === joystickPointerId){
-            joystickPointerId = null;
-            joyBase.style.display = 'none';
-            moveVector.set(0,0);
-        } else if(e.pointerId === cameraPointerId) {
-            cameraPointerId = null; 
-        }
-        if(activePointers.size < 2) initialPinchDistance = null; 
-    }; 
-    
-    zone.addEventListener('pointerup',ep, {passive:true}); 
-    zone.addEventListener('pointercancel',ep, {passive:true}); 
-    zone.addEventListener('pointerout',ep, {passive:true});
+        zone.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for(let i=0; i<e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if(t.identifier === joystickPointerId) {
+                    const rect = joyBase.getBoundingClientRect();
+                    const dx = t.clientX - (rect.left + rect.width / 2);
+                    const dy = t.clientY - (rect.top + rect.height / 2);
+                    const mD = 50, dist = Math.sqrt(dx*dx + dy*dy);
+                    const nx = dist > mD ? dx * mD / dist : dx;
+                    const ny = dist > mD ? dy * mD / dist : dy;
+                    joyNub.style.transform = `translate(-50%,-50%) translate(${nx}px,${ny}px)`;
+                    moveVector.set(nx / mD, ny / mD);
+                } else if(t.identifier === cameraPointerId) {
+                    targetCamYaw -= (t.clientX - lastCamTouchX) * 0.008;
+                    targetCamPitch -= (t.clientY - lastCamTouchY) * 0.008;
+                    targetCamPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, targetCamPitch));
+                    lastCamTouchX = t.clientX;
+                    lastCamTouchY = t.clientY;
+                }
+            }
+        }, {passive: false});
+
+        const handleTouchEnd = (e) => {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if(t.identifier === joystickPointerId) {
+                    joystickPointerId = null;
+                    joyBase.style.display = 'none';
+                    moveVector.set(0,0);
+                } else if(t.identifier === cameraPointerId) {
+                    cameraPointerId = null;
+                }
+            }
+        };
+        zone.addEventListener('touchend', handleTouchEnd);
+        zone.addEventListener('touchcancel', handleTouchEnd);
+
+        const addRipple = (el) => { const r = document.createElement('div'); r.className = 'btn-ripple'; el.appendChild(r); setTimeout(() => r.remove(), 400); };
+        document.getElementById('btn-jump').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); playerJump(); addRipple(e.currentTarget); }, {passive:false});
+        document.getElementById('btn-attack').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); playerAttack(); addRipple(e.currentTarget); }, {passive:false});
+        document.getElementById('btn-special').addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); playerSpecial(); addRipple(e.currentTarget); }, {passive:false});
+    }
 }
 
 function playerJump(){
@@ -1443,8 +1443,18 @@ function playerSpecial(){
 function handlePhysicsAndAnimation(dt){
     if(!playerBody || isGameOver) return;
     if(jumpCooldownTimer > 0) jumpCooldownTimer -= dt;
-    let ix=0,iz=0; 
-    if(joystickPointerId!==null){ix=moveVector.x;iz=moveVector.y;} else{if(keys.d)ix=1;else if(keys.a)ix=-1;if(keys.s)iz=1;else if(keys.w)iz=-1;}
+    
+    let ix=0, iz=0; 
+    
+    // ALWAYS check keyboard first so WASD overrides glitched touch inputs
+    if(keys.d) ix=1; else if(keys.a) ix=-1;
+    if(keys.s) iz=1; else if(keys.w) iz=-1;
+    
+    // Fallback to Joystick if WASD isn't actively being pressed
+    if (ix === 0 && iz === 0 && joystickPointerId !== null) {
+        ix = moveVector.x;
+        iz = moveVector.y;
+    }
     
     camYaw+=(targetCamYaw-camYaw)*10*dt; camPitch+=(targetCamPitch-camPitch)*10*dt; 
     _camForward.set(0,0,-1).applyAxisAngle(_upVec,camYaw); _camRight.set(1,0,0).applyAxisAngle(_upVec,camYaw); 
