@@ -791,13 +791,17 @@ function cycleWeather(){
     const btn=document.getElementById('toggle-weather-btn'), ws=WEATHER_STATES[weatherMode];
     btn.innerHTML=ws.label; btn.style.background=ws.bg;
     btn.style.boxShadow=`0 5px 0 ${ws.sh},0 8px 20px rgba(0,0,0,0.4)`; btn.style.color=ws.color;
-    if(weatherMode>0){ activeWeather=weatherMode-1; updateWeatherIndicator(); }
+    if(weatherMode>0){ 
+        activeWeather=weatherMode-1; 
+        updateWeatherIndicator(activeWeather); 
+    }
 }
 
-function updateWeatherIndicator(){
+function updateWeatherIndicator(overrideWeather = null){
     const labels=['🌤 Clear','🌧 Raining','❄️ Snowing'];
     const el=document.getElementById('weather-indicator');
-    if(el) el.innerText=labels[activeWeather]||'🌤 Clear';
+    let w = overrideWeather !== null ? overrideWeather : activeWeather;
+    if(el) el.innerText=labels[w]||'🌤 Clear';
 }
 
 function openMenu(){ 
@@ -877,7 +881,7 @@ function init(seed){
     animate();
 }
 
-function updateAstronomicalClock(dt){
+function updateAstronomicalClock(dt, localWeather = 0){
     let timeDecimal,displayHour,displayMin;
     if(realTimeMode){
         const now=new Date(); timeDecimal=now.getHours()+now.getMinutes()/60+now.getSeconds()/3600;
@@ -893,11 +897,17 @@ function updateAstronomicalClock(dt){
     globalDirLight.position.x=playerBody.position.x+Math.cos(sunAngle)*500;
     globalDirLight.position.y=Math.max(0,sunHeight*500);
     globalDirLight.position.z=playerBody.position.z+Math.cos(sunAngle)*200;
+    
     if(sunHeight>0.3){ _skyColor.copy(_daySky); _fogColor.copy(_daySky); globalDirLight.intensity=1.2; stars.material.opacity-=dt; }
     else if(sunHeight>-0.1){ const t=(sunHeight+0.1)/0.4; _skyColor.lerpColors(_sunsetSky,_daySky,t); _fogColor.lerpColors(_sunsetFog,_daySky,t); globalDirLight.intensity=Math.max(0,sunHeight*3); stars.material.opacity+=dt*0.5; }
     else { _skyColor.copy(_nightSky); _fogColor.copy(_nightFog); globalDirLight.intensity=0; stars.material.opacity+=dt; }
     stars.material.opacity=Math.max(0,Math.min(0.8,stars.material.opacity));
-    if(activeWeather>0&&sunHeight>0){ _skyColor.lerp(_rainSky,0.6); globalDirLight.intensity*=0.4; }
+    
+    // Dim the sky based on local biome precipitation, not global settings
+    if(localWeather > 0 && sunHeight > 0){ 
+        _skyColor.lerp(_rainSky,0.6); 
+        globalDirLight.intensity*=0.4; 
+    }
     scene.background.copy(_skyColor); scene.fog.color.copy(_fogColor);
 }
 
@@ -1169,7 +1179,6 @@ function playerJump(){
     if(isOnGround || isOnPhysicsObject || isCurrentlyClimbing){ 
         playerBody.velocity.y = playerStats.jump; 
         
-        // Eject out/back from tree trunk if actively climbing
         if(isCurrentlyClimbing) {
             playerBody.velocity.x += _moveDir.x * 8;
             playerBody.velocity.z += _moveDir.z * 8;
@@ -1310,16 +1319,68 @@ function handlePhysicsAndAnimation(dt){
 }
 
 function updateWeather(dt){
-    updateAstronomicalClock(dt);
-    if(weatherMode===0){ weatherTimer+=dt; if(weatherTimer>30){weatherTimer=0;activeWeather=Math.floor(Math.random()*3);updateWeatherIndicator();} }
-    else activeWeather=weatherMode-1;
-    const pPos=playerBody.position;
-    if(activeWeather===1){ for(let i=0;i<5;i++){ const d=rainPool.find(d=>!d.active); if(d){d.active=true;d.visible=true;d.position.set(pPos.x+(Math.random()-0.5)*60,pPos.y+40+Math.random()*10,pPos.z+(Math.random()-0.5)*60);} } }
-    for(let i=0;i<rainPool.length;i++){ const d=rainPool[i]; if(!d.active) continue; d.position.y-=40*dt; d.position.x-=10*dt; const gy=Math.max(getVisualElevationAt(d.position.x,d.position.z),-2); if(d.position.y<=gy){ d.active=false;d.visible=false; const s=splashPool.find(s=>!s.active); if(s){s.active=true;s.visible=true;s.position.copy(d.position);s.position.y=gy;s.velocity.set((Math.random()-0.5)*4,Math.random()*3+1,(Math.random()-0.5)*4);s.life=0.2;s.scale.set(1,1,1);} } }
-    if(activeWeather===2){ for(let i=0;i<3;i++){ const f=snowPool.find(s=>!s.active); if(f){f.active=true;f.visible=true;f.position.set(pPos.x+(Math.random()-0.5)*60,pPos.y+30+Math.random()*10,pPos.z+(Math.random()-0.5)*60);} } }
+    if(!playerBody) return;
+    
+    const pPos = playerBody.position;
+    const terrainY = getFinalElevationAt(pPos.x, pPos.z);
+    const pMoisture = (simplex.noise2D(pPos.x * 0.002 + 500, pPos.z * 0.002 + 500) + 1) / 2;
+    const actualBiome = getBiome(terrainY, pMoisture);
+
+    if(weatherMode===0){ 
+        weatherTimer+=dt; 
+        if(weatherTimer>120){ 
+            weatherTimer=0;
+            activeWeather = Math.random() < 0.65 ? 0 : 1; 
+        } 
+    } else {
+        activeWeather=weatherMode-1;
+    }
+
+    let localWeather = activeWeather;
+    if (weatherMode === 0 && activeWeather > 0) {
+        if (actualBiome === 'snow') localWeather = 2;
+        else if (actualBiome === 'desert') localWeather = 0;
+        else localWeather = 1;
+    }
+
+    if (weatherMode === 0) {
+        updateWeatherIndicator(localWeather);
+    }
+    
+    updateAstronomicalClock(dt, localWeather);
+
+    if(localWeather===1){ 
+        for(let i=0;i<5;i++){ const d=rainPool.find(d=>!d.active); if(d){d.active=true;d.visible=true;d.position.set(pPos.x+(Math.random()-0.5)*80,pPos.y+40+Math.random()*10,pPos.z+(Math.random()-0.5)*80);} } 
+    }
+    for(let i=0;i<rainPool.length;i++){ 
+        const d=rainPool[i]; if(!d.active) continue; 
+        d.position.y-=40*dt; d.position.x-=10*dt; 
+        const gy=Math.max(getVisualElevationAt(d.position.x,d.position.z),-2); 
+        if(d.position.y<=gy){ 
+            d.active=false;d.visible=false; 
+            const s=splashPool.find(s=>!s.active); 
+            if(s){s.active=true;s.visible=true;s.position.copy(d.position);s.position.y=gy;s.velocity.set((Math.random()-0.5)*4,Math.random()*3+1,(Math.random()-0.5)*4);s.life=0.2;s.scale.set(1,1,1);} 
+        } 
+    }
+
+    if(localWeather===2){ 
+        for(let i=0;i<3;i++){ const f=snowPool.find(s=>!s.active); if(f){f.active=true;f.visible=true;f.position.set(pPos.x+(Math.random()-0.5)*80,pPos.y+30+Math.random()*10,pPos.z+(Math.random()-0.5)*80);} } 
+    }
+    
     const t=clock.getElapsedTime();
-    for(let i=0;i<snowPool.length;i++){ const f=snowPool[i]; if(!f.active) continue; f.position.y-=10*dt; f.position.x+=Math.sin(t*2+f.position.y)*5*dt; f.position.z+=Math.cos(t*2+f.position.y)*5*dt; f.rotation.x+=f.rotationSpeed.x*dt; f.rotation.y+=f.rotationSpeed.y*dt; const gy=Math.max(getVisualElevationAt(f.position.x,f.position.z),-2); if(f.position.y<=gy){f.active=false;f.visible=false;} }
-    for(let i=0;i<splashPool.length;i++){ const s=splashPool[i]; if(!s.active) continue; s.position.addScaledVector(s.velocity,dt); s.velocity.y-=15*dt; s.scale.setScalar(Math.max(0,s.life/0.2)); s.life-=dt; if(s.life<=0){s.active=false;s.visible=false;} }
+    for(let i=0;i<snowPool.length;i++){ 
+        const f=snowPool[i]; if(!f.active) continue; 
+        f.position.y-=10*dt; f.position.x+=Math.sin(t*2+f.position.y)*5*dt; f.position.z+=Math.cos(t*2+f.position.y)*5*dt; 
+        f.rotation.x+=f.rotationSpeed.x*dt; f.rotation.y+=f.rotationSpeed.y*dt; 
+        const gy=Math.max(getVisualElevationAt(f.position.x,f.position.z),-2); 
+        if(f.position.y<=gy){f.active=false;f.visible=false;} 
+    }
+    for(let i=0;i<splashPool.length;i++){ 
+        const s=splashPool[i]; if(!s.active) continue; 
+        s.position.addScaledVector(s.velocity,dt); s.velocity.y-=15*dt; 
+        s.scale.setScalar(Math.max(0,s.life/0.2)); s.life-=dt; 
+        if(s.life<=0){s.active=false;s.visible=false;} 
+    }
 }
 
 function updateChunks(){ if(!playerBody) return; const px=Math.round(playerBody.position.x/chunkSize),pz=Math.round(playerBody.position.z/chunkSize); for(let x=-1;x<=1;x++) for(let z=-1;z<=1;z++) generateTerrainChunk(px+x,pz+z); }
