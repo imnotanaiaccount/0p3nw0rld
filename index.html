@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: 3D Procedural World</title>
+    <title>Wild Explorers: Biomes & Canopy Jumping</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -483,23 +483,41 @@ const keys = { w:false, a:false, s:false, d:false, e:false };
 let currentSpeedX = 0, currentSpeedZ = 0;
 let graphicsQuality = 'med';
 
+// Procedural Forest Variables
+let treeBodies = [];
+let treeMeshesGroup;
+let isCurrentlyClimbing = false;
+
+// Scalable Base Geometries & Materials for Performance
+const geoTrunk = new THREE.CylinderGeometry(1, 1, 1, 8); geoTrunk.translate(0, 0.5, 0); 
+const geoBranch = new THREE.BoxGeometry(1, 1, 1); geoBranch.translate(0.5, 0, 0); 
+const geoSphere = new THREE.IcosahedronGeometry(1, 1);
+const geoCone = new THREE.ConeGeometry(1, 1, 8); geoCone.translate(0, 0.5, 0);
+
+const matWood = new THREE.MeshStandardMaterial({color:0x4a3b22, roughness:1.0});
+const matDarkWood = new THREE.MeshStandardMaterial({color:0x2b1d0f, roughness:1.0});
+const matCactus = new THREE.MeshStandardMaterial({color:0x2d5a27, roughness:0.8});
+const matLeaves = new THREE.MeshStandardMaterial({color:0x2e8b57, roughness:0.8, flatShading:true});
+const matDarkLeaves = new THREE.MeshStandardMaterial({color:0x1b4d2e, roughness:0.9, flatShading:true});
+const matPineLeaves = new THREE.MeshStandardMaterial({color:0x193320, roughness:0.9, flatShading:true});
+
 // Web Audio API Procedural Music Engine
 let audioCtx, audioEnabled = true, masterMusicGain, masterSfxGain;
 let musicTimer = null, musicLooping = false;
 
 const musicScales = [
-    [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25], // C Major Pentatonic (Ambient/Peaceful)
-    [146.83, 164.81, 174.61, 220.00, 246.94, 293.66, 329.63, 349.23, 440.00, 493.88, 587.33]  // D Minor Pentatonic (Melancholy/Caves)
+    [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25], 
+    [146.83, 164.81, 174.61, 220.00, 246.94, 293.66, 329.63, 349.23, 440.00, 493.88, 587.33]  
 ];
 
 const AnimalTraits = {
-    dog:     { mass:25,  speed:14, jump:12, maxHealth:150, emoji:'🐕', label:'DOG',
+    dog:     { mass:25,  speed:14, jump:12, maxHealth:150, emoji:'🐕', label:'DOG', climbSpeed:0, maxClimbProp:0,
                props:{ torsoL:1.2, torsoW:0.5,  legL:0.6,  neckL:0.3,  snoutL:0.3,  tailL:0.6,  bipedal:false, color:0x8B4513 } },
-    cat:     { mass:5,   speed:12, jump:16, maxHealth:80,  emoji:'🐈', label:'CAT',
+    cat:     { mass:5,   speed:12, jump:16, maxHealth:80,  emoji:'🐈', label:'CAT', climbSpeed:8, maxClimbProp:0.6,
                props:{ torsoL:0.9, torsoW:0.35, legL:0.4,  neckL:0.2,  snoutL:0.1,  tailL:0.9,  bipedal:false, color:0xFF8C00 } },
-    monkey:  { mass:15,  speed:10, jump:18, maxHealth:100, emoji:'🐒', label:'MONKEY',
+    monkey:  { mass:15,  speed:10, jump:18, maxHealth:100, emoji:'🐒', label:'MONKEY', climbSpeed:10, maxClimbProp:1.0,
                props:{ torsoL:0.8, torsoW:0.5,  legL:0.6,  neckL:0.1,  snoutL:0.15, tailL:1.2,  bipedal:true,  color:0x4A3728 } },
-    squirrel:{ mass:1,   speed:16, jump:15, maxHealth:40,  emoji:'🐿', label:'SQUIRREL',
+    squirrel:{ mass:1,   speed:16, jump:15, maxHealth:40,  emoji:'🐿', label:'SQUIRREL', climbSpeed:16, maxClimbProp:1.0,
                props:{ torsoL:0.4, torsoW:0.2,  legL:0.15, neckL:0.05, snoutL:0.05, tailL:0.5,  bipedal:true,  color:0xA0522D } }
 };
 
@@ -637,7 +655,6 @@ function updateGraphics(){
         globalDirLight.shadow.mapSize.height = 2048;
     }
     
-    // THREE.JS HACK: You MUST flush the old shadows and force materials to update when changing shadow types dynamically
     if(globalDirLight.shadow.map) {
         globalDirLight.shadow.map.dispose();
         globalDirLight.shadow.map = null;
@@ -667,6 +684,15 @@ function getVisualElevationAt(x,z){
     const y00=getFinalElevationAt(gx,gz), y10=getFinalElevationAt(gx+cs,gz);
     const y01=getFinalElevationAt(gx,gz+cs), y11=getFinalElevationAt(gx+cs,gz+cs);
     return (y00*(1-tx)+y10*tx)*(1-tz)+(y01*(1-tx)+y11*tx)*tz;
+}
+
+function getBiome(y, moisture) {
+    if(y < 2) return 'beach';
+    if(y > 70) return 'snow';
+    if(y > 45) return 'stone';
+    if(moisture > 0.60) return 'rainforest';
+    if(moisture < 0.35) return 'desert';
+    return 'plains';
 }
 
 function hostGame(){
@@ -798,7 +824,6 @@ function startGame(mode){
         
         init(12345); 
     } else { 
-        // Swap character mid-game if changed
         if(playerClass !== selectedClass) {
             scene.remove(playerGroup.group);
             world.removeBody(playerBody);
@@ -832,6 +857,9 @@ function init(seed){
     globalDirLight.shadow.bias=-0.001; scene.add(globalDirLight);
     world=new CANNON.World(); world.gravity.set(0,-15,0);
     world.broadphase=new CANNON.NaiveBroadphase(); world.solver.iterations=10;
+    
+    treeMeshesGroup = new THREE.Group(); scene.add(treeMeshesGroup);
+    
     targetReticle=new THREE.Group();
     const beamMat=new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:0.6,depthTest:false});
     const beam=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,30,8),beamMat);
@@ -843,7 +871,7 @@ function init(seed){
     createJuicyEnvironment(); initWeatherSystem(); createPlayer(playerClass); setupInputUX();
     window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); updateGraphics(); });
     
-    updateGraphics(); // Apply initial graphics setting
+    updateGraphics(); 
     updateHUD(); gameActive=true; 
     playAmbient(); 
     animate();
@@ -928,21 +956,143 @@ function createPlayer(type){
     playerBody.fixedRotation=true; world.addBody(playerBody);
 }
 
+function spawnTree(tx, ty, tz, biome, rngVal) {
+    let treeGroup = new THREE.Group();
+    let treeBody = new CANNON.Body({ mass: 0 });
+    let h = 0, radius = 0;
+
+    if(biome === 'rainforest') {
+        h = 25 + rngVal * 25; // 25 to 50 height
+        radius = 1.5 + rngVal * 1.5; // 1.5 to 3 radius
+        
+        let trunk = new THREE.Mesh(geoTrunk, matDarkWood);
+        trunk.scale.set(radius*0.8, h, radius);
+        trunk.castShadow = true; treeGroup.add(trunk);
+        
+        let shape = new CANNON.Cylinder(radius*0.8, radius, h, 8);
+        let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+        treeBody.addShape(shape, new CANNON.Vec3(0, h/2, 0), quat);
+
+        let numBranches = 2 + Math.floor(rngVal * 3);
+        for(let j=0; j<numBranches; j++) {
+            let bh = h * 0.4 + (j/numBranches) * h * 0.5; 
+            let bl = 8 + rngVal * 8; 
+            let angle = rngVal * j * Math.PI * 2;
+            
+            let branch = new THREE.Mesh(geoBranch, matDarkWood);
+            branch.scale.set(bl, radius*0.5, radius*0.5);
+            branch.position.set(0, bh, 0); branch.rotation.y = -angle;
+            branch.castShadow = true; treeGroup.add(branch);
+
+            let bx = Math.cos(angle) * (bl/2), bz = Math.sin(angle) * (bl/2);
+            let bShape = new CANNON.Box(new CANNON.Vec3(bl/2, radius*0.25, radius*0.25));
+            let bQuat = new CANNON.Quaternion(); bQuat.setFromAxisAngle(new CANNON.Vec3(0,1,0), -angle);
+            treeBody.addShape(bShape, new CANNON.Vec3(bx, bh, bz), bQuat);
+            
+            let leaf = new THREE.Mesh(geoSphere, matDarkLeaves);
+            leaf.scale.set(6, 4, 6);
+            leaf.position.set(Math.cos(angle) * bl, bh, Math.sin(angle) * bl);
+            treeGroup.add(leaf);
+        }
+        
+        let canopy = new THREE.Mesh(geoSphere, matDarkLeaves);
+        canopy.scale.set(10 + rngVal*5, 6 + rngVal*3, 10 + rngVal*5);
+        canopy.position.y = h; treeGroup.add(canopy);
+    }
+    else if(biome === 'snow') {
+        h = 15 + rngVal * 15; radius = 0.8 + rngVal*0.4;
+        let trunk = new THREE.Mesh(geoTrunk, matDarkWood);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        
+        let shape = new CANNON.Cylinder(radius, radius, h, 8);
+        let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+        treeBody.addShape(shape, new CANNON.Vec3(0, h/2, 0), quat);
+        
+        let leaves = new THREE.Mesh(geoCone, matPineLeaves);
+        leaves.scale.set(5+rngVal*2, h*0.8, 5+rngVal*2);
+        leaves.position.y = h*0.2; leaves.castShadow = true; treeGroup.add(leaves);
+    }
+    else if(biome === 'desert') {
+        h = 4 + rngVal * 6; radius = 0.6 + rngVal*0.3;
+        let trunk = new THREE.Mesh(geoTrunk, matCactus);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        
+        let shape = new CANNON.Cylinder(radius, radius, h, 8);
+        let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+        treeBody.addShape(shape, new CANNON.Vec3(0, h/2, 0), quat);
+    }
+    else { 
+        h = 10 + rngVal * 10; radius = 0.8 + rngVal*0.5;
+        let trunk = new THREE.Mesh(geoTrunk, matWood);
+        trunk.scale.set(radius, h, radius); trunk.castShadow = true; treeGroup.add(trunk);
+        
+        let shape = new CANNON.Cylinder(radius, radius, h, 8);
+        let quat = new CANNON.Quaternion(); quat.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+        treeBody.addShape(shape, new CANNON.Vec3(0, h/2, 0), quat);
+        
+        let leaves = new THREE.Mesh(geoSphere, matLeaves);
+        leaves.scale.set(5+rngVal*3, 4+rngVal*2, 5+rngVal*3);
+        leaves.position.y = h; leaves.castShadow = true; treeGroup.add(leaves);
+    }
+
+    treeGroup.position.set(tx, ty, tz);
+    treeBody.position.set(tx, ty, tz);
+    return { group: treeGroup, body: treeBody, h: h, radius: radius, visualBase: ty, x:tx, y:ty, z:tz };
+}
+
 function generateTerrainChunk(chunkX,chunkZ){
     const id=`${chunkX},${chunkZ}`; if(terrainChunks[id]) return;
     const geometry=new THREE.PlaneGeometry(chunkSize,chunkSize,chunkResolution,chunkResolution); geometry.rotateX(-Math.PI/2);
     const vertices=geometry.attributes.position.array, colors=[];
+    
     for(let i=0;i<vertices.length;i+=3){
-        const x=(chunkX*chunkSize)+vertices[i], z=(chunkZ*chunkSize)+vertices[i+2], y=getFinalElevationAt(x,z); vertices[i+1]=y;
+        const x=(chunkX*chunkSize)+vertices[i], z=(chunkZ*chunkSize)+vertices[i+2];
+        const y=getFinalElevationAt(x,z); vertices[i+1]=y;
+        const moisture = (simplex.noise2D(x * 0.002 + 500, z * 0.002 + 500) + 1) / 2;
+        const biome = getBiome(y, moisture);
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
+        
         const c=new THREE.Color();
-        if(d<-0.5) c.setHex(0x3b2f2f); else if(y<2) c.setHex(0xd2b48c); else if(y<45) c.setHex(0x4a7c59); else if(y<120) c.setHex(0x555555); else c.setHex(0xffffff);
+        if(d<-0.5) c.setHex(0x3b2f2f); 
+        else if(biome === 'beach') c.setHex(0xd2b48c);
+        else if(biome === 'snow') c.setHex(0xffffff);
+        else if(biome === 'stone') c.setHex(0x666666);
+        else if(biome === 'rainforest') c.setHex(0x1e3b1c);
+        else if(biome === 'desert') c.setHex(0xe3c16f);
+        else c.setHex(0x4a7c59); 
         colors.push(c.r,c.g,c.b);
     }
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3)); geometry.computeVertexNormals();
     const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.9,flatShading:true}));
     mesh.position.set(chunkX*chunkSize,0,chunkZ*chunkSize); mesh.receiveShadow=true; mesh.castShadow=true;
-    scene.add(mesh); terrainChunks[id]={mesh};
+    scene.add(mesh); 
+    
+    let chunkTrees = [];
+    let rng = new SimplexNoise(chunkX * 123 + chunkZ * 456); 
+    
+    for(let i=0; i<12; i++) { 
+        let tx = (chunkX * chunkSize) + (rng.noise2D(i, 0) * 0.5 + 0.5) * chunkSize - (chunkSize/2);
+        let tz = (chunkZ * chunkSize) + (rng.noise2D(0, i) * 0.5 + 0.5) * chunkSize - (chunkSize/2);
+        let ty = getFinalElevationAt(tx, tz);
+        let moisture = (simplex.noise2D(tx * 0.002 + 500, tz * 0.002 + 500) + 1) / 2;
+        let biome = getBiome(ty, moisture);
+        let spawnVal = (rng.noise2D(i*10, i*10) + 1) / 2;
+        
+        let spawnChance = 0;
+        if(biome === 'rainforest') spawnChance = 0.95;
+        else if(biome === 'plains') spawnChance = 0.3;
+        else if(biome === 'snow') spawnChance = 0.2;
+        else if(biome === 'desert') spawnChance = 0.05; 
+
+        if(spawnVal < spawnChance && ty > 2 && ty < 60) { 
+            let treeData = spawnTree(tx, ty, tz, biome, spawnVal);
+            treeMeshesGroup.add(treeData.group);
+            world.addBody(treeData.body);
+            chunkTrees.push(treeData.body);
+            treeBodies.push(treeData);
+        }
+    }
+    terrainChunks[id] = { mesh, trees: chunkTrees };
 }
 
 function updateChunkGeometry(id){
@@ -951,9 +1101,17 @@ function updateChunkGeometry(id){
     const geom=chunk.mesh.geometry, pos=geom.attributes.position.array, colors=geom.attributes.color.array; let ci=0;
     for(let i=0;i<pos.length;i+=3){
         const x=(cx*chunkSize)+pos[i], z=(cz*chunkSize)+pos[i+2], y=getFinalElevationAt(x,z); pos[i+1]=y;
+        const moisture = (simplex.noise2D(x * 0.002 + 500, z * 0.002 + 500) + 1) / 2;
+        const biome = getBiome(y, moisture);
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
         const c=new THREE.Color();
-        if(d<-0.5) c.setHex(0x3b2f2f); else if(y<2) c.setHex(0xd2b48c); else if(y<45) c.setHex(0x4a7c59); else if(y<120) c.setHex(0x555555); else c.setHex(0xffffff);
+        if(d<-0.5) c.setHex(0x3b2f2f); 
+        else if(biome === 'beach') c.setHex(0xd2b48c);
+        else if(biome === 'snow') c.setHex(0xffffff);
+        else if(biome === 'stone') c.setHex(0x666666);
+        else if(biome === 'rainforest') c.setHex(0x1e3b1c);
+        else if(biome === 'desert') c.setHex(0xe3c16f);
+        else c.setHex(0x4a7c59); 
         colors[ci]=c.r; colors[ci+1]=c.g; colors[ci+2]=c.b; ci+=3;
     }
     geom.attributes.position.needsUpdate=true; geom.attributes.color.needsUpdate=true; geom.computeVertexNormals();
@@ -998,8 +1156,26 @@ function setupInputUX(){
 
 function playerJump(){
     const gy=getVisualElevationAt(playerBody.position.x,playerBody.position.z);
-    if(playerBody.position.y-gy<playerStats.physicsRadius+1.0){ 
-        playerBody.velocity.y=playerStats.jump; playerGroup.group.scale.set(1.1,0.85,1.1); 
+    
+    // Check if player is standing on a Cannon physics object (like a branch)
+    const rayStart = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+    const rayEnd = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - playerStats.physicsRadius - 0.5, playerBody.position.z);
+    const rayResult = new CANNON.RaycastResult();
+    world.raycastClosest(rayStart, rayEnd, { skipBackfaces: true }, rayResult);
+    
+    const isOnGround = (playerBody.position.y - gy < playerStats.physicsRadius + 1.0);
+    const isOnPhysicsObject = rayResult.hasHit;
+
+    if(isOnGround || isOnPhysicsObject || isCurrentlyClimbing){ 
+        playerBody.velocity.y = playerStats.jump; 
+        
+        // Eject out/back from tree trunk if actively climbing
+        if(isCurrentlyClimbing) {
+            playerBody.velocity.x += _moveDir.x * 8;
+            playerBody.velocity.z += _moveDir.z * 8;
+        }
+
+        playerGroup.group.scale.set(1.1,0.85,1.1); 
         setTimeout(()=>playerGroup.group.scale.set(1,1,1),120); 
         playSFX('jump');
     }
@@ -1025,8 +1201,11 @@ function playerSpecial(){
     } else if(playerClass==='cat' || playerClass==='squirrel'){
         playerGroup.group.scale.set(0.8,0.8,1.5); setTimeout(()=>playerGroup.group.scale.set(1,1,1),200);
         const dashDir = new THREE.Vector3(0,0,-1).applyAxisAngle(_upVec,camYaw);
-        playerBody.velocity.x += dashDir.x * 30;
-        playerBody.velocity.z += dashDir.z * 30;
+        
+        currentSpeedX += dashDir.x * 60;
+        currentSpeedZ += dashDir.z * 60;
+        playerBody.velocity.y += (playerClass === 'cat') ? 10 : 3; 
+        
         playSFX('attack'); 
     } else if(playerClass==='monkey'){
         playerGroup.group.scale.set(1.2,0.6,1.2); setTimeout(()=>playerGroup.group.scale.set(1,1,1),200);
@@ -1044,15 +1223,48 @@ function handlePhysicsAndAnimation(dt){
     _camForward.set(0,0,-1).applyAxisAngle(_upVec,camYaw); _camRight.set(1,0,0).applyAxisAngle(_upVec,camYaw);
     _moveDir.copy(_camRight).multiplyScalar(ix).add(_camForward.multiplyScalar(-iz));
     if(_moveDir.lengthSq()>0.01) _moveDir.normalize();
+    
     currentSpeedX+=((_moveDir.x*playerStats.speed)-currentSpeedX)*8*dt;
     currentSpeedZ+=((_moveDir.z*playerStats.speed)-currentSpeedZ)*8*dt;
+    
     const awl=-2+Math.sin(clock.getElapsedTime()*1.5)*0.3, pb=playerBody.position.y-playerStats.physicsRadius;
     if(pb<awl){ const sub=awl-pb; playerBody.velocity.y+=sub*15*dt; currentSpeedX*=0.85; currentSpeedZ*=0.85; if(playerBody.velocity.y<-3) playerBody.velocity.y=-3; }
+    
     playerBody.velocity.x=currentSpeedX; playerBody.velocity.z=currentSpeedZ;
     const isMoving=Math.abs(currentSpeedX)>0.5||Math.abs(currentSpeedZ)>0.5;
     if(isMoving){ const ty=Math.atan2(currentSpeedX,currentSpeedZ), diff=ty-playerYaw; playerYaw+=Math.atan2(Math.sin(diff),Math.cos(diff))*10*dt; }
+    
     const cgy=getVisualElevationAt(playerBody.position.x,playerBody.position.z);
     if(pb<cgy){ playerBody.position.y=cgy+playerStats.physicsRadius; if(playerBody.velocity.y<0) playerBody.velocity.y=0; }
+    
+    isCurrentlyClimbing = false;
+    if(playerStats.climbSpeed > 0 && isMoving) {
+        let closestTree = null;
+        let minDist = 999; 
+        for(let t of treeBodies) {
+            let dx = playerBody.position.x - t.x;
+            let dz = playerBody.position.z - t.z;
+            let dist = Math.sqrt(dx*dx + dz*dz);
+            if(dist < t.radius + playerStats.physicsRadius + 0.8 && dist < minDist) {
+                minDist = dist;
+                closestTree = t;
+            }
+        }
+        
+        if(closestTree) {
+            let toTree = new THREE.Vector3(closestTree.x - playerBody.position.x, 0, closestTree.z - playerBody.position.z).normalize();
+            if(toTree.dot(_moveDir) > 0.4) {
+                let heightUpTree = playerBody.position.y - closestTree.visualBase;
+                let maxAllowedHeight = closestTree.h * playerStats.maxClimbProp;
+                
+                if(heightUpTree < maxAllowedHeight) {
+                    playerBody.velocity.y = playerStats.climbSpeed;
+                    isCurrentlyClimbing = true;
+                }
+            }
+        }
+    }
+
     playerGroup.group.position.copy(playerBody.position);
     _yawQuat.setFromAxisAngle(_upVec,playerYaw);
     const eps=0.5;
@@ -1061,6 +1273,7 @@ function handlePhysicsAndAnimation(dt){
     _hitNorm.set(-hx,2*eps,-hz).normalize(); _hitNorm.lerp(_upVec,0.6).normalize();
     _targetQuat.setFromUnitVectors(_upVec,_hitNorm).multiply(_yawQuat);
     playerGroup.group.quaternion.slerp(_targetQuat,10*dt);
+    
     if(playerClass==='dog'){
         const lf=new THREE.Vector3(0,0,-5).applyQuaternion(playerGroup.group.quaternion);
         reticleWorldX=playerBody.position.x+lf.x; reticleWorldZ=playerBody.position.z+lf.z;
@@ -1068,16 +1281,19 @@ function handlePhysicsAndAnimation(dt){
         targetReticle.position.set(reticleWorldX,ry+0.1,reticleWorldZ); targetReticle.visible=aimUIEnabled;
         if(aimUIEnabled) targetReticle.children[1].material.opacity=0.2+Math.abs(Math.sin(clock.getElapsedTime()*4))*0.15;
     } else { targetReticle.visible=false; }
+    
     const time=clock.getElapsedTime(), legs=playerGroup.animData.legs, og=playerBody.position.y-cgy<playerStats.physicsRadius+1.0;
     if(isMoving&&og){ legs[0].rotation.x=Math.sin(time*12)*0.5; legs[1].rotation.x=Math.cos(time*12)*0.5; legs[2].rotation.x=Math.cos(time*12)*0.5; legs[3].rotation.x=Math.sin(time*12)*0.5; playerGroup.bodyWrapper.position.y=Math.abs(Math.sin(time*24))*0.15; }
     else { legs.forEach(l=>{l.rotation.x+=(0-l.rotation.x)*10*dt;}); playerGroup.bodyWrapper.position.y+=(0-playerGroup.bodyWrapper.position.y)*10*dt; }
     if(playerClass==='dog'){ const torso=playerGroup.bodyWrapper.children[0]; if(torso&&torso.children.length>=3){ const tail=torso.children[2]; if(tail) tail.rotation.y=isMoving?Math.sin(time*14)*0.5:Math.sin(time*4)*0.2; } }
+    
     for(const id in otherPlayers){
         const p=otherPlayers[id]; p.avatar.group.position.lerp(p.targetPos,10*dt); p.avatar.group.quaternion.slerp(p.targetQuat,10*dt);
         const mv=p.targetPos.distanceTo(p.avatar.group.position)>0.1;
         if(mv){ p.avatar.animData.legs[0].rotation.x=Math.sin(time*12)*0.5; p.avatar.animData.legs[1].rotation.x=Math.cos(time*12)*0.5; p.avatar.animData.legs[2].rotation.x=Math.cos(time*12)*0.5; p.avatar.animData.legs[3].rotation.x=Math.sin(time*12)*0.5; }
         else p.avatar.animData.legs.forEach(l=>l.rotation.x+=(0-l.rotation.x)*10*dt);
     }
+    
     const sm=Math.sqrt(currentSpeedX*currentSpeedX+currentSpeedZ*currentSpeedZ);
     camera.fov+=(baseFOV+(sm*0.8)-camera.fov)*5*dt; camera.updateProjectionMatrix();
     smoothedCamDistance+=(targetCamDistance-smoothedCamDistance)*5*dt;
@@ -1089,6 +1305,7 @@ function handlePhysicsAndAnimation(dt){
     if(hd<finalCamDistance) finalCamDistance=hd; else finalCamDistance+=(hd-finalCamDistance)*10*dt;
     camera.position.set(ph.x+finalCamDistance*Math.sin(camYaw)*Math.cos(camPitch),ph.y+finalCamDistance*Math.sin(camPitch),ph.z+finalCamDistance*Math.cos(camYaw)*Math.cos(camPitch));
     camera.lookAt(ph);
+    
     if(damageFlashTimer>0){ damageFlashTimer-=dt; if(damageFlashTimer<=0) document.getElementById('damage-flash').style.opacity='0'; }
 }
 
