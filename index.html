@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: Flawless Survival & Crafting</title>
+    <title>Wild Explorers: Seamless Survival</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -32,7 +32,7 @@
 
         canvas { display: block; width: 100%; height: 100%; }
 
-        #main-menu, #game-over-screen {
+        #main-menu, #game-over-screen, #loading-screen {
             position: absolute; inset: 0;
             width: 100vw; height: 100vh;
             display: flex; flex-direction: column;
@@ -42,6 +42,7 @@
         
         #main-menu { background: radial-gradient(ellipse at 50% -10%, #3a7bd5 0%, #001433 60%, #000a1a 100%); overflow-y: auto; }
         #game-over-screen { background: rgba(20, 0, 0, 0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 200; display: none; }
+        #loading-screen { background: #000a1a; z-index: 300; display: none; }
 
         #main-menu::before {
             content: ''; position: absolute; inset: 0;
@@ -57,7 +58,7 @@
             background: var(--glass-bg); padding: 28px 26px; border-radius: 18px;
             box-shadow: 0 24px 60px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.08);
             display: flex; flex-direction: column; gap: 12px; width: 92%; max-width: 400px;
-            border: 1px solid var(--glass-border);
+            border: 1px solid var(--glass-border); position: relative; z-index: 2;
         }
 
         .menu-divider { width: 100%; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent); margin: 4px 0; }
@@ -85,6 +86,9 @@
         input[type="text"] { background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.25); font-size: 0.95rem; }
         input[type="text"]::placeholder { color: rgba(200,220,255,0.45); }
 
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         #game-ui { position: absolute; inset: 0; color: white; pointer-events: none; z-index: 10; display: none; }
 
         #hud-panel { position: absolute; top: env(safe-area-inset-top, 15px); left: env(safe-area-inset-left, 15px); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 10px 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.55); min-width: 190px; pointer-events: auto; }
@@ -110,6 +114,8 @@
         #btn-sleep { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); padding: 12px 24px; font-size: 1.2rem; display: none; z-index: 15; border-radius: 30px; pointer-events: auto; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } 100% { transform: translateX(-50%) scale(1); } }
         
+        #class-badge { position: absolute; bottom: env(safe-area-inset-bottom, 15px); left: 50%; transform: translateX(-50%); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 5px 18px; font-size: 0.74rem; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: rgba(200,220,255,0.85); pointer-events: none; z-index: 10; display: none; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+
         #network-status { position: absolute; bottom: env(safe-area-inset-bottom, 20px); right: env(safe-area-inset-right, 20px); background: var(--glass-bg); padding: 6px 14px; border-radius: 8px; font-size: 0.7rem; display: none; z-index: 10; }
         #network-status.active { display: block; }
         #network-status::before { content: '● '; color: #2ecc71; animation: blink 1.5s infinite; }
@@ -125,7 +131,7 @@
         #btn-attack { bottom: 50px; right: 40px; width: 88px; height: 88px; background: radial-gradient(circle at 35% 35%, #ff6b8a 0%, #e02050 100%); line-height: 82px; font-size: 0.95rem; }
         #btn-special { bottom: 152px; right: 46px; width: 68px; height: 68px; background: radial-gradient(circle at 35% 35%, #ffd97a 0%, #e09b00 100%); line-height: 62px; font-size: 0.82rem; }
         
-        @media (hover: none) and (pointer: coarse) { .action-btn { display: block; } }
+        @media (hover: none) and (pointer: coarse) { .action-btn { display: block; } #class-badge { display: block; } }
     </style>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -138,9 +144,15 @@
 <div id="damage-flash"></div>
 <div id="freeze-flash"></div>
 
+<div id="loading-screen">
+    <div class="spinner"></div>
+    <h2 style="font-family: 'Nunito', sans-serif; letter-spacing: 2px;">GENERATING WORLD...</h2>
+    <p style="color: #888; font-size: 0.9rem;">Compiling assets & spawning wildlife</p>
+</div>
+
 <div id="main-menu">
     <h1>🌿 Wild Explorers</h1>
-    <p class="subtitle">Multiplayer Survival · Crafting · Optimization</p>
+    <p class="subtitle">Multiplayer Survival · Crafting · Seamless Generation</p>
     <div class="menu-box">
         <div class="toggle-group">
             <button id="toggle-time-btn" onclick="toggleTimeMode()" style="background:linear-gradient(145deg,#f39c12,#e67e22);box-shadow:0 5px 0 #ca6f1e,0 8px 20px rgba(0,0,0,0.4);">⏱ Clock</button>
@@ -161,11 +173,21 @@
                 <option value="low">Low</option>
                 <option value="med" selected>Medium</option>
                 <option value="high">High</option>
+                <option value="extreme">Ultra</option>
             </select>
         </div>
         <div class="settings-row">
             <span>FOV:</span>
             <input type="range" id="fov-slider" min="50" max="110" step="5" value="65" oninput="updateFOV()">
+        </div>
+        
+        <div class="settings-row">
+            <span>Music Vol:</span>
+            <input type="range" id="vol-music" min="0" max="1" step="0.05" value="0.5" oninput="updateVolumes()">
+        </div>
+        <div class="settings-row">
+            <span>SFX Vol:</span>
+            <input type="range" id="vol-sfx" min="0" max="1" step="0.05" value="0.7" oninput="updateVolumes()">
         </div>
         
         <button id="start-btn" onclick="startGame('local')">▶ Play World</button>
@@ -210,6 +232,8 @@
     <button id="menu-toggle-btn" onclick="openMenu()">☰ MENU</button>
 </div>
 
+<div id="class-badge">DOG</div>
+
 <div id="network-status">ONLINE</div>
 <div id="touch-zone-container"></div>
 <div id="joystick-base"><div id="joystick-nub"></div></div>
@@ -225,6 +249,7 @@ const _skyColor = new THREE.Color(), _fogColor = new THREE.Color(), _sunsetSky =
 let scene, camera, renderer, world, simplex;
 let playerGroup, playerBody, playerStats;
 let terrainChunks = {}; 
+let chunkQueue = []; // Optimized async generation queue
 let gameActive = false, isGameOver = false; 
 let clock = new THREE.Clock();
 let globalWaterMesh, globalDirLight, globalHemiLight, stars;
@@ -277,11 +302,12 @@ let audioCtx, audioEnabled = true, masterMusicGain, masterSfxGain;
 let musicTimer = null, musicLooping = false;
 const musicScales = [ [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25], [146.83, 164.81, 174.61, 220.00, 246.94, 293.66, 329.63, 349.23, 440.00, 493.88, 587.33] ];
 
+// RESTORED: Emoji properties for the class badge
 const AnimalTraits = {
-    dog:     { mass:25,  speed:14, jump:12, maxHealth:150, label:'DOG', climbSpeed:0, maxClimbProp:0, props:{ torsoL:1.1, torsoW:0.55, legL:0.6, neckL:0.5, snoutL:0.3, tailL:0.6, bipedal:false, color:0x8B4513 } },
-    cat:     { mass:5,   speed:12, jump:16, maxHealth:80,  label:'CAT', climbSpeed:8, maxClimbProp:0.6, props:{ torsoL:1.0, torsoW:0.4, legL:0.4, neckL:0.4, snoutL:0.15, tailL:0.9, bipedal:false, color:0xFF8C00 } },
-    monkey:  { mass:15,  speed:10, jump:18, maxHealth:100, label:'MONKEY', climbSpeed:10, maxClimbProp:1.0, props:{ torsoL:0.8, torsoW:0.45, legL:0.5, neckL:0.2, snoutL:0.2, tailL:1.2, bipedal:true,  color:0x4A3728 } },
-    squirrel:{ mass:1,   speed:16, jump:15, maxHealth:40,  label:'SQUIRREL', climbSpeed:16, maxClimbProp:1.0, props:{ torsoL:0.5, torsoW:0.3, legL:0.2, neckL:0.15, snoutL:0.1, tailL:0.6, bipedal:true,  color:0xA0522D } }
+    dog:     { mass:25,  speed:14, jump:12, maxHealth:150, emoji:'🐕', label:'DOG', climbSpeed:0, maxClimbProp:0, props:{ torsoL:1.1, torsoW:0.55, legL:0.6, neckL:0.5, snoutL:0.3, tailL:0.6, bipedal:false, color:0x8B4513 } },
+    cat:     { mass:5,   speed:12, jump:16, maxHealth:80,  emoji:'🐈', label:'CAT', climbSpeed:8, maxClimbProp:0.6, props:{ torsoL:1.0, torsoW:0.4, legL:0.4, neckL:0.4, snoutL:0.15, tailL:0.9, bipedal:false, color:0xFF8C00 } },
+    monkey:  { mass:15,  speed:10, jump:18, maxHealth:100, emoji:'🐒', label:'MONKEY', climbSpeed:10, maxClimbProp:1.0, props:{ torsoL:0.8, torsoW:0.45, legL:0.5, neckL:0.2, snoutL:0.2, tailL:1.2, bipedal:true,  color:0x4A3728 } },
+    squirrel:{ mass:1,   speed:16, jump:15, maxHealth:40,  emoji:'🐿', label:'SQUIRREL', climbSpeed:16, maxClimbProp:1.0, props:{ torsoL:0.5, torsoW:0.3, legL:0.2, neckL:0.15, snoutL:0.1, tailL:0.6, bipedal:true,  color:0xA0522D } }
 };
 
 function initAudio(){ 
@@ -395,7 +421,9 @@ function playSFX(type){
 function updateGraphics(){ 
     graphicsQuality = document.getElementById('graphics-select').value; 
     if(!renderer || !globalDirLight) return; 
-    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0; 
+    
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; 
+    renderer.toneMappingExposure = 1.0; 
     
     if(graphicsQuality === 'low'){ 
         chunkRenderDistance = 1; 
@@ -415,7 +443,14 @@ function updateGraphics(){
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
         renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
         globalDirLight.shadow.mapSize.width = 2048; globalDirLight.shadow.mapSize.height = 2048; 
-    } 
+    } else if(graphicsQuality === 'extreme'){ 
+        // RESTORED: Ultra Setting
+        chunkRenderDistance = 2; 
+        if(scene) scene.fog.density = 0.0008; 
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0)); 
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+        globalDirLight.shadow.mapSize.width = 4096; globalDirLight.shadow.mapSize.height = 4096; 
+    }
     if(globalDirLight.shadow.map) { 
         globalDirLight.shadow.map.dispose(); globalDirLight.shadow.map = null; 
     } 
@@ -570,31 +605,58 @@ function openMenu(){
     document.getElementById('start-btn').innerHTML='▶ Resume Game'; 
 }
 
-function startGame(mode){
+// RESTORED & OPTIMIZED: Start Game Flow to fix the Black Screen & Lag
+function startGame(mode) {
     updateFOV(); initAudio(); 
-    document.getElementById('main-menu').style.display='none'; 
-    document.getElementById('game-ui').style.display='block'; 
-    document.getElementById('touch-zone-container').style.display='block';
-    document.getElementById('resource-panel').style.display='flex';
+    document.getElementById('main-menu').style.display = 'none';
     
-    let selectedClass = document.getElementById('animal-select').value;
+    // Show loading screen immediately to hide the freeze
+    document.getElementById('loading-screen').style.display = 'flex';
+    
+    // Yield to browser so the loading screen actually renders before freezing
+    setTimeout(() => {
+        let selectedClass = document.getElementById('animal-select').value;
+        const t = AnimalTraits[selectedClass]; 
+        
+        // Update badge
+        document.getElementById('class-badge').innerText = t.emoji + ' ' + t.label; 
+        document.getElementById('btn-special').innerText = selectedClass === 'dog' ? 'DIG' : (selectedClass === 'monkey' ? 'LEAP' : 'DASH');
 
-    if(!world){
-        playerClass = selectedClass; 
-        document.getElementById('btn-special').innerText = playerClass === 'dog' ? 'DIG' : (playerClass === 'monkey' ? 'LEAP' : 'DASH');
-        init(12345); 
-    } else { 
-        if(playerClass !== selectedClass) { 
-            scene.remove(playerGroup.group); 
-            world.removeBody(playerBody); 
-            playerClass = selectedClass; 
-            createPlayer(playerClass); 
-            document.getElementById('btn-special').innerText = playerClass === 'dog' ? 'DIG' : (playerClass === 'monkey' ? 'LEAP' : 'DASH'); 
+        if(!world) {
+            playerClass = selectedClass;
+            init(12345); 
+        } else { 
+            if(playerClass !== selectedClass) { 
+                scene.remove(playerGroup.group); 
+                world.removeBody(playerBody); 
+                playerClass = selectedClass; 
+                createPlayer(playerClass); 
+            }
         }
-        gameActive=true; 
-        isGameOver=false; 
-        playAmbient();
-    }
+        
+        // Force a render frame while loading screen is still up to compile shaders
+        requestAnimationFrame(() => {
+            renderer.render(scene, camera);
+            
+            // Give WebGL 500ms to settle, then fade into the game
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.display = 'none';
+                document.getElementById('game-ui').style.display = 'block'; 
+                document.getElementById('touch-zone-container').style.display = 'block';
+                document.getElementById('resource-panel').style.display = 'flex';
+                
+                gameActive = true; 
+                isGameOver = false; 
+                playAmbient();
+                
+                // If this is the very first time, start the loop
+                if (!clock.running) {
+                    clock.start();
+                    animate();
+                }
+            }, 500);
+        });
+    }, 50);
 }
 
 function init(seed){
@@ -642,6 +704,9 @@ function init(seed){
     initAmbientLife(); 
     spawnLogCabin(); 
 
+    // Synchronously generate the chunk we are standing on so we don't fall through the world
+    generateTerrainChunk(0, 0);
+
     window.addEventListener('resize',()=>{ 
         camera.aspect=window.innerWidth/window.innerHeight; 
         camera.updateProjectionMatrix(); 
@@ -651,9 +716,6 @@ function init(seed){
     
     updateGraphics(); 
     updateHUD(); 
-    gameActive=true; 
-    playAmbient(); 
-    animate();
 }
 
 function updateAstronomicalClock(dt, localWeather = 0){
@@ -997,7 +1059,7 @@ function buildProceduralAnimal(type, stats) {
     bodyWrapper.add(headGroup); animData.head = headGroup;
     
     const headRad = p.torsoW * 0.85; 
-    const eyeRad = headRad * 0.15; // RESTORED VARIABLE
+    const eyeRad = headRad * 0.15; 
     
     const head = new THREE.Mesh(new THREE.SphereGeometry(headRad, 24, 24), mat); 
     head.castShadow = true; head.receiveShadow = true; headGroup.add(head);
@@ -1409,7 +1471,10 @@ function handlePhysicsAndAnimation(dt){
     
     let hd=smoothedCamDistance; const sd=smoothedCamDistance/15; 
     for(let i=1;i<=15;i++){ _testPos.addScaledVector(_rayDirCam,sd); if(_testPos.y<getVisualElevationAt(_testPos.x,_testPos.z)+0.5){hd=(i-1)*sd;break;} } 
+    
+    // RESTORED FIX: Prevent Camera clipping inside the player which caused black screen angles
     if(hd<finalCamDistance) finalCamDistance=hd; else finalCamDistance+=(hd-finalCamDistance)*10*dt; 
+    finalCamDistance = Math.max(2.5, finalCamDistance); 
     
     camera.position.set(ph.x+finalCamDistance*Math.sin(camYaw)*Math.cos(camPitch),ph.y+finalCamDistance*Math.sin(camPitch),ph.z+finalCamDistance*Math.cos(camYaw)*Math.cos(camPitch)); 
     camera.lookAt(ph); 
@@ -1562,14 +1627,26 @@ function updateWeather(dt){
     }
 }
 
+// RESTORED FIX: Asynchronous Queueing for Chunk loading to stop the stuttering lag
 function updateChunks(){ 
     if(!playerBody) return; 
     const px=Math.round(playerBody.position.x/chunkSize); const pz=Math.round(playerBody.position.z/chunkSize); 
+    
     for(let x=-chunkRenderDistance; x<=chunkRenderDistance; x++) { 
         for(let z=-chunkRenderDistance; z<=chunkRenderDistance; z++) { 
-            generateTerrainChunk(px+x, pz+z); 
+            const id = `${px+x},${pz+z}`;
+            if (!terrainChunks[id] && !chunkQueue.includes(id)) {
+                chunkQueue.push(id);
+            }
         } 
     } 
+    
+    // Process exactly 1 chunk per frame to keep FPS high
+    if (chunkQueue.length > 0) {
+        let nextChunk = chunkQueue.shift();
+        let parts = nextChunk.split(',');
+        generateTerrainChunk(Number(parts[0]), Number(parts[1]));
+    }
 }
 
 let _netTimer=0;
@@ -1589,14 +1666,13 @@ function animate(){
     updateVolcanoes(dt); 
     updateAmbientLife(dt); 
     
-    // --- LIGHT OPTIMIZATION CULLING ---
     if(!isGameOver) {
         for(let t of activeTorches) {
             let distToTorch = Math.hypot(playerBody.position.x - t.x, playerBody.position.z - t.z);
             if(distToTorch < 60) {
-                t.light.intensity = 1.5 + Math.sin(clock.getElapsedTime()*15)*0.2; // Flicker
+                t.light.intensity = 1.5 + Math.sin(clock.getElapsedTime()*15)*0.2; 
             } else {
-                t.light.intensity = 0; // Cull far away lights to save WebGL limits
+                t.light.intensity = 0; 
             }
         }
     }
@@ -1608,7 +1684,6 @@ function animate(){
         document.getElementById('btn-sleep').style.display = 'none'; 
     }
     
-    // --- SURVIVAL LOOP ---
     let isFreezing = currentSunHeight < 0 || activeWeather === 2;
     let safeCamp = null; 
     let freezeOverlay = document.getElementById('freeze-flash');
