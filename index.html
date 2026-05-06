@@ -509,7 +509,6 @@ function initAudio(){
         masterMusicGain = audioCtx.createGain();
         masterSfxGain = audioCtx.createGain();
         
-        // Faux Reverb / Delay for that spacious Minecraft vibe
         const delay = audioCtx.createDelay(1.0);
         delay.delayTime.value = 0.45;
         const feedback = audioCtx.createGain();
@@ -575,7 +574,7 @@ function procedurallyGenerateSong() {
     let tOffset = 0;
     
     for(let i=0; i<seqLength; i++){
-        if(songType === 0) { // Vibe A: Slow Ambient Chords
+        if(songType === 0) { 
             setTimeout(() => {
                 if(!audioEnabled || !gameActive) return;
                 let baseIdx = Math.floor(Math.random() * 5);
@@ -584,7 +583,7 @@ function procedurallyGenerateSong() {
                 if(Math.random()>0.5) playNote(scale[baseIdx+4], 'sine', 3, 4, 4);
             }, tOffset * 1000);
             tOffset += (Math.random() * 4 + 4);
-        } else { // Vibe B: Sparse Melancholy Arps
+        } else { 
             setTimeout(() => {
                 if(!audioEnabled || !gameActive) return;
                 let root = Math.floor(Math.random() * 4);
@@ -595,7 +594,7 @@ function procedurallyGenerateSong() {
             tOffset += (Math.random() * 3 + 3);
         }
     }
-    const nextSongDelay = (tOffset + 10 + Math.random() * 20) * 1000; // 10 to 30 seconds of silence between songs
+    const nextSongDelay = (tOffset + 10 + Math.random() * 20) * 1000; 
     musicTimer = setTimeout(procedurallyGenerateSong, nextSongDelay);
 }
 
@@ -624,16 +623,28 @@ function updateGraphics(){
     if(graphicsQuality === 'low'){
         renderer.setPixelRatio(1);
         renderer.shadowMap.type = THREE.BasicShadowMap;
-        globalDirLight.castShadow = false;
+        globalDirLight.shadow.mapSize.width = 512;
+        globalDirLight.shadow.mapSize.height = 512;
     } else if(graphicsQuality === 'med'){
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-        renderer.shadowMap.type = THREE.BasicShadowMap;
-        globalDirLight.castShadow = true;
+        renderer.shadowMap.type = THREE.PCFShadowMap;
+        globalDirLight.shadow.mapSize.width = 1024;
+        globalDirLight.shadow.mapSize.height = 1024;
     } else {
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        globalDirLight.castShadow = true;
+        globalDirLight.shadow.mapSize.width = 2048;
+        globalDirLight.shadow.mapSize.height = 2048;
     }
+    
+    // THREE.JS HACK: You MUST flush the old shadows and force materials to update when changing shadow types dynamically
+    if(globalDirLight.shadow.map) {
+        globalDirLight.shadow.map.dispose();
+        globalDirLight.shadow.map = null;
+    }
+    scene.traverse(function(child) {
+        if(child.material) child.material.needsUpdate = true;
+    });
 }
 
 function getElevationAt(x,z){
@@ -776,14 +787,29 @@ function startGame(mode){
     document.getElementById('main-menu').style.display='none';
     document.getElementById('game-ui').style.display='block';
     document.getElementById('touch-zone-container').style.display='block';
+    
+    let selectedClass = document.getElementById('animal-select').value;
+
     if(!world){
-        playerClass=document.getElementById('animal-select').value;
+        playerClass = selectedClass;
         const t=AnimalTraits[playerClass];
         document.getElementById('class-badge').innerText=t.emoji+' '+t.label;
-        document.getElementById('btn-special').innerText = playerClass === 'dog' ? 'DIG' : (playerClass === 'cat' ? 'DASH' : 'LEAP'); 
+        document.getElementById('btn-special').innerText = playerClass === 'dog' ? 'DIG' : (playerClass === 'monkey' ? 'LEAP' : 'DASH');
         
         init(12345); 
     } else { 
+        // Swap character mid-game if changed
+        if(playerClass !== selectedClass) {
+            scene.remove(playerGroup.group);
+            world.removeBody(playerBody);
+            
+            playerClass = selectedClass;
+            createPlayer(playerClass);
+            
+            const t=AnimalTraits[playerClass];
+            document.getElementById('class-badge').innerText=t.emoji+' '+t.label;
+            document.getElementById('btn-special').innerText = playerClass === 'dog' ? 'DIG' : (playerClass === 'monkey' ? 'LEAP' : 'DASH');
+        }
         gameActive=true; 
         playAmbient();
     }
