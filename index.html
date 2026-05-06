@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: Volcanic Eruptions & Ultra Textures</title>
+    <title>Wild Explorers: Lighting & Texture Fixes</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -478,7 +478,7 @@ let digMap = new Map();
 let targetReticle;
 let reticleWorldX = 0, reticleWorldZ = 0;
 const timeStep = 1/60, chunkSize = 150, chunkResolution = 25;
-let chunkRenderDistance = 1; // Default dynamic render distance
+let chunkRenderDistance = 1; 
 let lives = 3, currentHealth = 100, maxHealth = 100;
 let playerClass = 'dog', playerYaw = 0, damageFlashTimer = 0;
 let camYaw = Math.PI, camPitch = 0.4, targetCamYaw = Math.PI, targetCamPitch = 0.4;
@@ -491,23 +491,6 @@ let lastCamTouchX = 0, lastCamTouchY = 0;
 const keys = { w:false, a:false, s:false, d:false, e:false };
 let currentSpeedX = 0, currentSpeedZ = 0;
 let graphicsQuality = 'med';
-
-// Procedural Texture Generator for Ultra Graphics
-function createProceduralNoiseTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    const imgData = ctx.createImageData(256, 256);
-    for (let i = 0; i < imgData.data.length; i += 4) {
-        let v = Math.random() * 255;
-        imgData.data[i] = v; imgData.data[i+1] = v; imgData.data[i+2] = v; imgData.data[i+3] = 255;
-    }
-    ctx.putImageData(imgData, 0, 0);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-}
-const globalBumpMap = createProceduralNoiseTexture();
 
 // Procedural Forest & Volcano Variables
 let treeBodies = [];
@@ -525,14 +508,14 @@ const geoSphere = new THREE.IcosahedronGeometry(1, 1);
 const geoCone = new THREE.ConeGeometry(1, 1, 8); geoCone.translate(0, 0.5, 0);
 const geoVolcano = new THREE.CylinderGeometry(6, 30, 70, 10); geoVolcano.translate(0, 35, 0);
 
-// Materials equipped with the global bump map (activated only on High/Extreme)
-const matWood = new THREE.MeshStandardMaterial({color:0x4a3b22, roughness:1.0, bumpMap: globalBumpMap, bumpScale: 0});
-const matDarkWood = new THREE.MeshStandardMaterial({color:0x2b1d0f, roughness:1.0, bumpMap: globalBumpMap, bumpScale: 0});
-const matCactus = new THREE.MeshStandardMaterial({color:0x2d5a27, roughness:0.8, bumpMap: globalBumpMap, bumpScale: 0});
+// Removed the noisy bump maps. Clean, rich, flat shading restores the low-poly aesthetic.
+const matWood = new THREE.MeshStandardMaterial({color:0x4a3b22, roughness:1.0});
+const matDarkWood = new THREE.MeshStandardMaterial({color:0x2b1d0f, roughness:1.0});
+const matCactus = new THREE.MeshStandardMaterial({color:0x2d5a27, roughness:0.8});
 const matLeaves = new THREE.MeshStandardMaterial({color:0x2e8b57, roughness:0.8, flatShading:true});
 const matDarkLeaves = new THREE.MeshStandardMaterial({color:0x1b4d2e, roughness:0.9, flatShading:true});
 const matPineLeaves = new THREE.MeshStandardMaterial({color:0x193320, roughness:0.9, flatShading:true});
-const matVolcano = new THREE.MeshStandardMaterial({color:0x2b2525, roughness:0.9, flatShading:true, bumpMap: globalBumpMap, bumpScale: 0});
+const matVolcano = new THREE.MeshStandardMaterial({color:0x2b2525, roughness:0.9, flatShading:true});
 
 // Web Audio API Procedural Music Engine
 let audioCtx, audioEnabled = true, masterMusicGain, masterSfxGain;
@@ -684,12 +667,9 @@ function updateGraphics(){
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1.0;
     
-    // Default Material Reset
-    let bumpIntensity = 0;
-    
     if(graphicsQuality === 'low'){
         chunkRenderDistance = 1;
-        if(scene) scene.fog.density = 0.0050; // Pull fog in tight
+        if(scene) scene.fog.density = 0.0050; 
         renderer.setPixelRatio(isMobile ? 0.75 : 1.0); 
         renderer.shadowMap.type = THREE.BasicShadowMap;
         globalDirLight.shadow.mapSize.width = 512;
@@ -702,45 +682,32 @@ function updateGraphics(){
         globalDirLight.shadow.mapSize.width = 1024;
         globalDirLight.shadow.mapSize.height = 1024;
     } else if(graphicsQuality === 'high'){
-        chunkRenderDistance = 2; // Renders much further
-        if(scene) scene.fog.density = 0.0015; // Push fog back
-        bumpIntensity = 0.3; // Activate procedural textures
+        chunkRenderDistance = 2; 
+        if(scene) scene.fog.density = 0.0015; 
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         let sRes = isMobile ? 1024 : 2048;
         globalDirLight.shadow.mapSize.width = Math.min(sRes, maxTex);
         globalDirLight.shadow.mapSize.height = Math.min(sRes, maxTex);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        // Dropped exposure from 1.0 to 0.85 to fix the washed-out brightness
+        renderer.toneMappingExposure = 0.85;
     } else if(graphicsQuality === 'extreme'){
-        chunkRenderDistance = 2; // Renders 25 full chunks instead of 9
-        if(scene) scene.fog.density = 0.0008; // Vastly pushed back fog
-        bumpIntensity = 0.6; // Deep procedural textures
+        chunkRenderDistance = 2; 
+        if(scene) scene.fog.density = 0.0008; 
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2.0));
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         let sRes = isMobile ? 2048 : 4096;
         globalDirLight.shadow.mapSize.width = Math.min(sRes, maxTex);
         globalDirLight.shadow.mapSize.height = Math.min(sRes, maxTex);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.25; 
+        // Dropped extreme exposure from 1.25 to 0.75 for rich, deep contrast
+        renderer.toneMappingExposure = 0.75; 
     }
     
     if(globalDirLight.shadow.map) {
         globalDirLight.shadow.map.dispose();
         globalDirLight.shadow.map = null;
-    }
-    
-    // Instantly apply procedural texturing to all existing meshes in the world
-    if(scene) {
-        scene.traverse(function(child) {
-            if(child.material) {
-                // If the material has our global bump map installed, adjust intensity
-                if(child.material.bumpMap !== undefined) {
-                    child.material.bumpScale = bumpIntensity;
-                }
-                child.material.needsUpdate = true;
-            }
-        });
     }
 }
 
@@ -901,7 +868,7 @@ function openMenu(){
 }
 
 function startGame(mode){
-    updateFOV(); // Ensure FOV is pulled from slider
+    updateFOV(); 
     initAudio(); 
     
     document.getElementById('main-menu').style.display='none';
@@ -944,7 +911,9 @@ function init(seed){
     renderer.shadowMap.enabled=true; 
     document.body.appendChild(renderer.domElement);
     
-    globalHemiLight=new THREE.HemisphereLight(0xffffff,0x444444,0.8); scene.add(globalHemiLight);
+    // Lowered Hemisphere light from 0.8 down to 0.45 so shadows aren't washed out
+    globalHemiLight=new THREE.HemisphereLight(0xffffff,0x444444,0.45); scene.add(globalHemiLight);
+    
     globalDirLight=new THREE.DirectionalLight(0xffffee,1.0); globalDirLight.castShadow=true;
     globalDirLight.shadow.camera.left=-200; globalDirLight.shadow.camera.right=200;
     globalDirLight.shadow.camera.top=200; globalDirLight.shadow.camera.bottom=-200;
@@ -967,7 +936,7 @@ function init(seed){
     createJuicyEnvironment(); initWeatherSystem(); initVolcanoSystem(); createPlayer(playerClass); setupInputUX();
     window.addEventListener('resize',()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); updateGraphics(); });
     
-    updateGraphics(); // Initializes fog and render distances correctly from start
+    updateGraphics(); 
     updateHUD(); gameActive=true; 
     playAmbient(); 
     animate();
@@ -990,8 +959,9 @@ function updateAstronomicalClock(dt, localWeather = 0){
     globalDirLight.position.y=Math.max(0,sunHeight*500);
     globalDirLight.position.z=playerBody.position.z+Math.cos(sunAngle)*200;
     
-    if(sunHeight>0.3){ _skyColor.copy(_daySky); _fogColor.copy(_daySky); globalDirLight.intensity=1.2; stars.material.opacity-=dt; }
-    else if(sunHeight>-0.1){ const t=(sunHeight+0.1)/0.4; _skyColor.lerpColors(_sunsetSky,_daySky,t); _fogColor.lerpColors(_sunsetFog,_daySky,t); globalDirLight.intensity=Math.max(0,sunHeight*3); stars.material.opacity+=dt*0.5; }
+    // Lowered direct sunlight intensity slightly to avoid blowouts
+    if(sunHeight>0.3){ _skyColor.copy(_daySky); _fogColor.copy(_daySky); globalDirLight.intensity=0.9; stars.material.opacity-=dt; }
+    else if(sunHeight>-0.1){ const t=(sunHeight+0.1)/0.4; _skyColor.lerpColors(_sunsetSky,_daySky,t); _fogColor.lerpColors(_sunsetFog,_daySky,t); globalDirLight.intensity=Math.max(0,sunHeight*2.5); stars.material.opacity+=dt*0.5; }
     else { _skyColor.copy(_nightSky); _fogColor.copy(_nightFog); globalDirLight.intensity=0; stars.material.opacity+=dt; }
     stars.material.opacity=Math.max(0,Math.min(0.8,stars.material.opacity));
     
@@ -1059,7 +1029,8 @@ function createJuicyEnvironment(){
 function buildProceduralAnimal(type,stats){
     const group=new THREE.Group(), tiltWrapper=new THREE.Group(); group.add(tiltWrapper);
     const bodyWrapper=new THREE.Group(); tiltWrapper.add(bodyWrapper);
-    const p=stats.props, mat=new THREE.MeshStandardMaterial({color:p.color,roughness:0.8,flatShading:true, bumpMap: globalBumpMap, bumpScale: 0});
+    // Removed the rogue bumpMap generator so it's clean flat color again
+    const p=stats.props, mat=new THREE.MeshStandardMaterial({color:p.color,roughness:0.8,flatShading:true});
     let animData={legs:[],type:p.bipedal?'biped':'quad'};
     const torso=new THREE.Mesh(new THREE.BoxGeometry(p.torsoW,p.torsoW,p.torsoL),mat);
     torso.castShadow=true; torso.position.y=p.legL+(p.torsoW/2); bodyWrapper.add(torso);
@@ -1205,11 +1176,8 @@ function generateTerrainChunk(chunkX,chunkZ){
     }
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3)); geometry.computeVertexNormals();
     
-    // Add procedural bump texturing mapping for terrain based on Graphics Quality
     const terrainMat = new THREE.MeshStandardMaterial({
-        vertexColors:true, roughness:0.9, flatShading:true, 
-        bumpMap: globalBumpMap, 
-        bumpScale: (graphicsQuality === 'high' || graphicsQuality === 'extreme') ? 0.3 : 0
+        vertexColors:true, roughness:0.9, flatShading:true
     });
     
     const mesh=new THREE.Mesh(geometry, terrainMat);
@@ -1517,7 +1485,6 @@ function handlePhysicsAndAnimation(dt){
     }
     
     const sm=Math.sqrt(currentSpeedX*currentSpeedX+currentSpeedZ*currentSpeedZ);
-    // BaseFOV logic is completely dynamic based on slider now
     camera.fov+=(baseFOV+(sm*0.8)-camera.fov)*5*dt; camera.updateProjectionMatrix();
     smoothedCamDistance+=(targetCamDistance-smoothedCamDistance)*5*dt;
     const ph=playerGroup.group.position.clone().add(new THREE.Vector3(0,1.5,0));
@@ -1691,7 +1658,6 @@ function updateWeather(dt){
     }
 }
 
-// Utilizing dynamic chunkRenderDistance from the Graphics selection
 function updateChunks(){ 
     if(!playerBody) return; 
     const px=Math.round(playerBody.position.x/chunkSize);
