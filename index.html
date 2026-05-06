@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Wild Explorers: Lush Greens & Natural Sun</title>
+    <title>Wild Explorers: Hyper-Vibrant Greens</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;900&display=swap');
 
@@ -452,7 +452,7 @@ const _idealCamPos = new THREE.Vector3();
 const _rayDirCam   = new THREE.Vector3();
 const _testPos     = new THREE.Vector3();
 
-// Restored natural day sky blue (no artificial dark blue tint)
+// Warm, natural sunlight sky
 const _skyColor   = new THREE.Color();
 const _fogColor   = new THREE.Color();
 const _sunsetSky  = new THREE.Color(0xfd5e53);
@@ -512,8 +512,8 @@ const geoVolcano = new THREE.CylinderGeometry(6, 30, 70, 10); geoVolcano.transla
 const matWood = new THREE.MeshStandardMaterial({color:0x4a3b22, roughness:1.0});
 const matDarkWood = new THREE.MeshStandardMaterial({color:0x2b1d0f, roughness:1.0});
 const matCactus = new THREE.MeshStandardMaterial({color:0x2d5a27, roughness:0.8});
-const matLeaves = new THREE.MeshStandardMaterial({color:0x2e8b57, roughness:0.8, flatShading:true});
-const matDarkLeaves = new THREE.MeshStandardMaterial({color:0x1b4d2e, roughness:0.9, flatShading:true});
+const matLeaves = new THREE.MeshStandardMaterial({color:0x22cc22, roughness:0.8, flatShading:true}); // Brighter leaves
+const matDarkLeaves = new THREE.MeshStandardMaterial({color:0x0fa821, roughness:0.9, flatShading:true}); // Brighter jungle leaves
 const matPineLeaves = new THREE.MeshStandardMaterial({color:0x193320, roughness:0.9, flatShading:true});
 const matVolcano = new THREE.MeshStandardMaterial({color:0x2b2525, roughness:0.9, flatShading:true});
 
@@ -644,9 +644,8 @@ function updateGraphics(){
     if(!renderer || !globalDirLight) return;
     
     const maxTex = renderer.capabilities.maxTextureSize;
-    // Using ACESFilmic Tone mapping for a balanced, rich, natural sunlight appearance
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMappingExposure = 1.0;
     
     if(graphicsQuality === 'low'){
         chunkRenderDistance = 1;
@@ -706,14 +705,14 @@ function getVisualElevationAt(x,z){
     return (y00*(1-tx)+y10*tx)*(1-tz)+(y01*(1-tx)+y11*tx)*tz;
 }
 
-// Updated mapping to favor much more grassy/plains and rainforests, and reduce desert/beach.
+// MASSIVELY adjusted biome thresholds to spawn almost entirely grass and forest
 function getBiome(y, moisture) {
-    if(y < 1.5) return 'beach'; // Reduced height of sand (was 2.0)
+    if(y < -1.0) return 'beach'; // ONLY spawns right next to the water (y = -2)
     if(y > 75) return 'snow';
     if(y > 50) return 'stone';
-    if(moisture > 0.55) return 'rainforest'; // Increased frequency of deep forests
-    if(moisture < 0.20) return 'desert'; // Vastly reduced the amount of desert wasteland
-    return 'plains'; // Expanded green plains
+    if(moisture > 0.40) return 'rainforest'; // Vastly increased rainforests
+    if(moisture < 0.08) return 'desert'; // Vastly reduced deserts to almost nothing
+    return 'plains'; // Everything else is green plains
 }
 
 function hostGame(){
@@ -835,10 +834,10 @@ function init(seed){
     renderer.outputEncoding = THREE.sRGBEncoding; renderer.setSize(window.innerWidth,window.innerHeight); renderer.shadowMap.enabled=true; 
     document.body.appendChild(renderer.domElement);
     
-    // Restored Natural white/grey ambient lighting to remove artificial blue tint
+    // Bright, natural ambient lighting
     globalHemiLight=new THREE.HemisphereLight(0xffffff, 0x444444, 0.5); scene.add(globalHemiLight);
     
-    // Restored bright, natural pure directional sunlight
+    // Warm, natural directional sunlight
     globalDirLight=new THREE.DirectionalLight(0xffffff, 1.1); globalDirLight.castShadow=true;
     globalDirLight.shadow.camera.left=-200; globalDirLight.shadow.camera.right=200;
     globalDirLight.shadow.camera.top=200; globalDirLight.shadow.camera.bottom=-200;
@@ -1084,14 +1083,14 @@ function generateTerrainChunk(chunkX,chunkZ){
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
         
         const c=new THREE.Color();
-        // Upgraded Color Palette for lush, natural scenery
-        if(d<-0.5) c.setHex(0x3b2f2f); 
-        else if(biome === 'beach') c.setHex(0xeaddcf); // Brighter natural sand
-        else if(biome === 'snow') c.setHex(0xdbe9f4); 
-        else if(biome === 'stone') c.setHex(0x777777);
-        else if(biome === 'rainforest') c.setHex(0x228b22); // Vibrant forest green
-        else if(biome === 'desert') c.setHex(0xedc9af);
-        else c.setHex(0x55a630); // Bright, vivid grassy plains
+        // VIBRANT HYPER-SATURATED COLOR PALETTE
+        if(d<-0.5) c.setHex(0x3b2f2f); // Dirt
+        else if(biome === 'beach') c.setHex(0xffdf80); // Bright sunny sand
+        else if(biome === 'snow') c.setHex(0xffffff); 
+        else if(biome === 'stone') c.setHex(0x888888); 
+        else if(biome === 'rainforest') c.setHex(0x0fa821); // Vivid jungle emerald
+        else if(biome === 'desert') c.setHex(0xf5b756); // Warm orange sand
+        else c.setHex(0x42e329); // Hyper-vibrant grass
         
         colors.push(c.r,c.g,c.b);
     }
@@ -1142,14 +1141,14 @@ function updateChunkGeometry(id){
         let d=digMap.get(Math.round(x)+','+Math.round(z))||0;
         const c=new THREE.Color();
         
-        // Upgraded Color Palette for chunk updates too
+        // VIBRANT HYPER-SATURATED COLOR PALETTE
         if(d<-0.5) c.setHex(0x3b2f2f); 
-        else if(biome === 'beach') c.setHex(0xeaddcf); 
-        else if(biome === 'snow') c.setHex(0xdbe9f4); 
-        else if(biome === 'stone') c.setHex(0x777777); 
-        else if(biome === 'rainforest') c.setHex(0x228b22); 
-        else if(biome === 'desert') c.setHex(0xedc9af); 
-        else c.setHex(0x55a630); 
+        else if(biome === 'beach') c.setHex(0xffdf80); 
+        else if(biome === 'snow') c.setHex(0xffffff); 
+        else if(biome === 'stone') c.setHex(0x888888); 
+        else if(biome === 'rainforest') c.setHex(0x0fa821); 
+        else if(biome === 'desert') c.setHex(0xf5b756); 
+        else c.setHex(0x42e329); 
         
         colors[ci]=c.r; colors[ci+1]=c.g; colors[ci+2]=c.b; ci+=3;
     }
