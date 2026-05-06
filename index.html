@@ -603,9 +603,6 @@ function openMenu(){
     document.getElementById('start-btn').innerHTML='▶ Resume Game'; 
 }
 
-// --- ENGINE PRE-WARM FIX ---
-// This runs behind the loading screen to snap the camera directly behind the player
-// and compile all shaders before the game is visible to the user.
 function startGame(mode) {
     updateFOV(); initAudio(); 
     document.getElementById('main-menu').style.display = 'none';
@@ -630,13 +627,11 @@ function startGame(mode) {
             }
         }
         
-        // Fast-forward physics and camera positioning in the background
         for(let i = 0; i < 10; i++) {
             world.step(1/60, 1/60, 3);
             handlePhysicsAndAnimation(0.016);
         }
 
-        // Force WebGL to compile shaders with the correct camera position
         requestAnimationFrame(() => {
             renderer.render(scene, camera);
             
@@ -700,11 +695,13 @@ function init(seed){
     initWeatherSystem(); 
     initVolcanoSystem(); 
     createPlayer(playerClass); 
+    
+    // THE INPUT SYSTEM WAS REBUILT HERE
     setupInputUX();
+    
     initAmbientLife(); 
     spawnLogCabin(); 
 
-    // Synchronously generate the base chunk and force the queue to finish surrounding chunks instantly
     generateTerrainChunk(0, 0);
     updateChunks();
     while (chunkQueue.length > 0) {
@@ -1254,7 +1251,7 @@ function updateChunkGeometry(id){
     for(let i=0;i<pos.length;i+=3){
         const x=(cx*chunkSize)+pos[i], z=(cz*chunkSize)+pos[i+2], y=getFinalElevationAt(x,z); pos[i+1]=y; 
         const moisture = (simplex.noise2D(x * 0.002 + 500, z * 0.002 + 500) + 1) / 2; const biome = getBiome(y, moisture); 
-        let d=digMap.get(Math.round(x)+Math.round(z))||0; 
+        let d=digMap.get(Math.round(x)+','+Math.round(z))||0; 
         const c=new THREE.Color();
         if(d<-0.5) c.setHex(0x3b2f2f); else if(biome === 'beach') c.setHex(0xffdf80); else if(biome === 'snow') c.setHex(0xffffff); else if(biome === 'stone') c.setHex(0x888888); else if(biome === 'rainforest') c.setHex(0x0fa821); else if(biome === 'desert') c.setHex(0xf5b756); else c.setHex(0x42e329); 
         colors[ci]=c.r; colors[ci+1]=c.g; colors[ci+2]=c.b; ci+=3;
@@ -1262,6 +1259,7 @@ function updateChunkGeometry(id){
     geom.attributes.position.needsUpdate=true; geom.attributes.color.needsUpdate=true; geom.computeVertexNormals();
 }
 
+// --- THE INPUT SYSTEM WAS REBUILT HERE TO SEPARATE MOUSE AND TOUCH ---
 function setupInputUX(){
     window.addEventListener('keydown',(e)=>{ 
         const k=e.key.toLowerCase(); 
@@ -1278,9 +1276,13 @@ function setupInputUX(){
     window.addEventListener('wheel',(e)=>{ targetCamDistance=Math.max(4,Math.min(40,targetCamDistance+Math.sign(e.deltaY)*2)); },{passive:true});
     
     let mrd=false,lmx=0,lmy=0; 
-    window.addEventListener('mousedown',(e)=>{ if(e.button===2){mrd=true;lmx=e.clientX;lmy=e.clientY;} }); 
-    window.addEventListener('mouseup',(e)=>{ if(e.button===2) mrd=false; }); 
-    window.addEventListener('mousemove',(e)=>{ if(!mrd) return; targetCamYaw-=(e.clientX-lmx)*0.006; targetCamPitch-=(e.clientY-lmy)*0.006; targetCamPitch=Math.max(-Math.PI/2+0.1,Math.min(Math.PI/2-0.1,targetCamPitch)); lmx=e.clientX; lmy=e.clientY; }); 
+    // FIXED: Allow Left-Click AND Right-Click to drag camera for desktop
+    window.addEventListener('mousedown',(e)=>{ mrd=true; lmx=e.clientX; lmy=e.clientY; }); 
+    window.addEventListener('mouseup',(e)=>{ mrd=false; }); 
+    window.addEventListener('mousemove',(e)=>{ 
+        if(!mrd) return; 
+        targetCamYaw-=(e.clientX-lmx)*0.006; targetCamPitch-=(e.clientY-lmy)*0.006; targetCamPitch=Math.max(-Math.PI/2+0.1,Math.min(Math.PI/2-0.1,targetCamPitch)); lmx=e.clientX; lmy=e.clientY; 
+    }); 
     window.addEventListener('contextmenu',(e)=>e.preventDefault());
     
     const addRipple=(el)=>{ const r=document.createElement('div'); r.className='btn-ripple'; el.appendChild(r); setTimeout(()=>r.remove(),400); };
@@ -1290,6 +1292,7 @@ function setupInputUX(){
     
     const zone=document.getElementById('touch-zone-container'), joyBase=document.getElementById('joystick-base'), joyNub=document.getElementById('joystick-nub');
     zone.addEventListener('pointerdown',(e)=>{ 
+        if (e.pointerType === 'mouse') return; // FIXED: Prevent desktop mouse from triggering mobile joystick
         activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY}); 
         if(e.clientX<window.innerWidth/2&&joystickPointerId===null){ 
             joystickPointerId=e.pointerId; joyBase.style.display='block'; joyBase.style.left=e.clientX+'px'; joyBase.style.top=e.clientY+'px'; joyNub.style.transform='translate(-50%,-50%) translate(0px,0px)'; moveVector.set(0,0); 
@@ -1302,6 +1305,7 @@ function setupInputUX(){
     }, {passive:true});
     
     zone.addEventListener('pointermove',(e)=>{ 
+        if (e.pointerType === 'mouse') return; // FIXED
         if(activePointers.has(e.pointerId)){ activePointers.get(e.pointerId).x=e.clientX; activePointers.get(e.pointerId).y=e.clientY; } 
         if(activePointers.size>=2){ 
             const pts=Array.from(activePointers.values()), d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y); 
@@ -1315,6 +1319,7 @@ function setupInputUX(){
     }, {passive:true});
     
     const ep=(e)=>{ 
+        if (e.pointerType === 'mouse') return; // FIXED
         activePointers.delete(e.pointerId); 
         if(e.pointerId===joystickPointerId){
             joystickPointerId=null;joyBase.style.display='none';moveVector.set(0,0);
